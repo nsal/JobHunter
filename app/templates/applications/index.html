@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}Applications · JobHunter{% endblock %}
+{% block content %}
+<div class="page-heading"><h1>Applications</h1><a class="button" href="/applications/new">New application</a></div>
+<div class="table-wrap"><table>
+  <thead><tr><th>Role</th><th>Company</th><th>Payment</th><th>Job URL</th><th>CV</th><th>Recruiter</th><th>Fully remote</th><th>Current stage</th><th>Stage note</th><th>Submitted</th><th>Last updated</th></tr></thead>
+  <tbody id="applications">{% for application in applications %}{% include 'applications/_application_row.html' %}{% else %}<tr><td colspan="11">No applications yet.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endblock %}

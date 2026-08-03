@@ -1,0 +1,264 @@
+"""Persistence operations for applications and immutable stage history."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+from urllib.parse import unquote, urlsplit
+
+from app.database import STAGES, connect
+
+
+class ApplicationNotFoundError(ValueError):
+    """Raised when an application does not exist."""
+
+
+def _required(value: str | None, field: str) -> str:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        raise ValueError(f"{field} is required.")
+    return cleaned
+
+
+def _optional(value: str | None) -> str | None:
+    cleaned = (value or "").strip()
+    return cleaned or None
+
+
+def _flag(value: bool | str | int | None) -> int:
+    return int(value in (True, 1, "1", "true", "on", "yes"))
+
+
+def _job_url(value: str | None) -> str | None:
+    """Return an optional absolute HTTP(S) job URL."""
+    cleaned = _optional(value)
+    if cleaned is None:
+        return None
+    parsed = urlsplit(cleaned)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Job URL must be an absolute HTTP or HTTPS URL.")
+    return cleaned
+
+
+def _cv_location(value: str | None) -> str | None:
+    """Return an optional local CV location as a canonical file URI."""
+    cleaned = _optional(value)
+    if cleaned is None:
+        return None
+    parsed = urlsplit(cleaned)
+    if parsed.scheme:
+        if (
+            parsed.scheme.lower() != "file"
+            or parsed.netloc not in {"", "localhost"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError(
+                "CV location must be an absolute path or file URL."
+            )
+        path = Path(unquote(parsed.path))
+    else:
+        path = Path(cleaned)
+    if not path.is_absolute():
+        raise ValueError("CV location must be an absolute path or file URL.")
+    return path.as_uri()
+
+
+def _safe_job_url(value: Any) -> str | None:
+    """Return a stored job URL only when it remains safe to render."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return _job_url(value)
+    except ValueError:
+        return None
+
+
+def _safe_cv_location(value: Any) -> str | None:
+    """Return a stored CV location only when it remains safe to render."""
+    if not isinstance(value, str):
+        return None
+    try:
+        return _cv_location(value)
+    except ValueError:
+        return None
+
+
+def _sanitize_stored_links(application: dict[str, Any]) -> dict[str, Any]:
+    """Normalize persisted links before exposing them to a template."""
+    application["job_url"] = _safe_job_url(application.get("job_url"))
+    application["cv_path"] = _safe_cv_location(application.get("cv_path"))
+    return application
+
+
+class Repository:
+    """Small repository layer backed by parameterised sqlite3 queries."""
+
+    def __init__(self, database_path: str | Path) -> None:
+        self.database_path = database_path
+
+    def create_application(
+        self, values: Mapping[str, Any], effective_from: str
+    ) -> int:
+        """Create an application and its initial Submitted history.
+
+        The application and stage record are written atomically.
+        """
+        role = _required(values.get("role"), "Role")
+        company = _required(values.get("company"), "Company")
+        if not effective_from:
+            raise ValueError("Submitted date is required.")
+        with connect(self.database_path) as connection:
+            cursor = connection.execute(
+                """INSERT INTO applications (
+                    role, company, payment, job_url, cv_path, is_recruiter,
+                    is_fully_remote, notes, full_jd
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    role,
+                    company,
+                    _optional(values.get("payment")),
+                    _job_url(values.get("job_url")),
+                    _cv_location(values.get("cv_path")),
+                    _flag(values.get("is_recruiter")),
+                    _flag(values.get("is_fully_remote")),
+                    _optional(values.get("notes")),
+                    _optional(values.get("full_jd")),
+                ),
+            )
+            if cursor.lastrowid is None:
+                raise RuntimeError(
+                    "Application insertion did not return an ID."
+                )
+            application_id = cursor.lastrowid
+            connection.execute(
+                """INSERT INTO submission_history (
+                    application_id, stage, stage_sequence, effective_from,
+                    is_current
+                ) VALUES (?, 'Submitted', 1, ?, 1)""",
+                (application_id, effective_from),
+            )
+        return application_id
+
+    def list_applications(self) -> list[dict[str, Any]]:
+        """Return applications ordered by their current-stage start time."""
+        with connect(self.database_path) as connection:
+            rows = connection.execute(
+                """SELECT a.*, h.stage AS current_stage,
+                    h.stage_description AS current_stage_description,
+                    h.effective_from AS last_updated_date,
+                    submitted.effective_from AS submitted_date
+                FROM applications AS a
+                JOIN submission_history AS h
+                  ON h.application_id = a.id AND h.is_current = 1
+                JOIN submission_history AS submitted
+                  ON submitted.application_id = a.id
+                 AND submitted.stage_sequence = 1
+                ORDER BY h.effective_from DESC, a.id DESC"""
+            ).fetchall()
+        return [_sanitize_stored_links(dict(row)) for row in rows]
+
+    def get_application(self, application_id: int) -> dict[str, Any]:
+        """Return application details, summary dates, and complete history."""
+        with connect(self.database_path) as connection:
+            row = connection.execute(
+                """SELECT a.*, h.stage AS current_stage,
+                    h.stage_description AS current_stage_description,
+                    h.effective_from AS last_updated_date,
+                    submitted.effective_from AS submitted_date
+                FROM applications AS a
+                JOIN submission_history AS h
+                  ON h.application_id = a.id AND h.is_current = 1
+                JOIN submission_history AS submitted
+                  ON submitted.application_id = a.id
+                 AND submitted.stage_sequence = 1
+                WHERE a.id = ?""",
+                (application_id,),
+            ).fetchone()
+            if row is None:
+                raise ApplicationNotFoundError("Application not found.")
+            history = connection.execute(
+                """SELECT * FROM submission_history WHERE application_id = ?
+                ORDER BY stage_sequence DESC""",
+                (application_id,),
+            ).fetchall()
+        application = _sanitize_stored_links(dict(row))
+        application["history"] = [dict(item) for item in history]
+        return application
+
+    def update_application(
+        self, application_id: int, values: Mapping[str, Any]
+    ) -> None:
+        """Update editable application fields without touching its history."""
+        role = _required(values.get("role"), "Role")
+        company = _required(values.get("company"), "Company")
+        with connect(self.database_path) as connection:
+            cursor = connection.execute(
+                """UPDATE applications SET role = ?, company = ?, payment = ?,
+                    job_url = ?, cv_path = ?, is_recruiter = ?,
+                    is_fully_remote = ?, notes = ?, full_jd = ? WHERE id = ?""",
+                (
+                    role,
+                    company,
+                    _optional(values.get("payment")),
+                    _job_url(values.get("job_url")),
+                    _cv_location(values.get("cv_path")),
+                    _flag(values.get("is_recruiter")),
+                    _flag(values.get("is_fully_remote")),
+                    _optional(values.get("notes")),
+                    _optional(values.get("full_jd")),
+                    application_id,
+                ),
+            )
+            if cursor.rowcount == 0:
+                raise ApplicationNotFoundError("Application not found.")
+
+    def add_stage(
+        self,
+        application_id: int,
+        stage: str,
+        effective_from: str,
+        description: str | None = None,
+    ) -> None:
+        """Close the current stage and append a new current stage atomically."""
+        if stage not in STAGES:
+            raise ValueError("Choose a valid stage.")
+        if not effective_from:
+            raise ValueError("Effective-from date is required.")
+        with connect(self.database_path) as connection:
+            current = connection.execute(
+                """SELECT id, effective_from, stage_sequence
+                FROM submission_history
+                WHERE application_id = ? AND is_current = 1""",
+                (application_id,),
+            ).fetchone()
+            if current is None:
+                exists = connection.execute(
+                    "SELECT 1 FROM applications WHERE id = ?", (application_id,)
+                ).fetchone()
+                if exists is None:
+                    raise ApplicationNotFoundError("Application not found.")
+                raise ValueError("Application has no current stage.")
+            if effective_from < current["effective_from"]:
+                raise ValueError(
+                    "Effective-from date cannot precede the current stage."
+                )
+            connection.execute(
+                """UPDATE submission_history
+                SET effective_to = ?, is_current = 0 WHERE id = ?""",
+                (effective_from, current["id"]),
+            )
+            connection.execute(
+                """INSERT INTO submission_history (
+                    application_id, stage, stage_sequence, stage_description,
+                    effective_from, is_current
+                ) VALUES (?, ?, ?, ?, ?, 1)""",
+                (
+                    application_id,
+                    stage,
+                    int(current["stage_sequence"]) + 1,
+                    _optional(description),
+                    effective_from,
+                ),
+            )

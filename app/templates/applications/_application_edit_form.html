@@ -1,0 +1,47 @@
+<details id="application-edit-form">
+  <summary>Edit application</summary>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="{{ action or '/applications/' ~ application.id }}"
+        hx-post="{{ action or '/applications/' ~ application.id }}"
+        hx-target="#application-edit-form" hx-swap="outerHTML">
+    <label>
+      Role
+      <input name="role" value="{{ application.role }}" required>
+    </label>
+    <label>
+      Company
+      <input name="company" value="{{ application.company }}" required>
+    </label>
+    <label>
+      Payment
+      <input name="payment" value="{{ application.payment or '' }}">
+    </label>
+    <label>
+      Job URL
+      <input name="job_url" value="{{ application.job_url or '' }}">
+    </label>
+    <label>
+      CV location
+      <input name="cv_path" value="{{ application.cv_path or '' }}">
+    </label>
+    <label>
+      <input type="checkbox" name="is_recruiter"
+             {% if application.is_recruiter %}checked{% endif %}>
+      Recruiter
+    </label>
+    <label>
+      <input type="checkbox" name="is_fully_remote"
+             {% if application.is_fully_remote %}checked{% endif %}>
+      Fully remote
+    </label>
+    <label>
+      Notes
+      <textarea name="notes">{{ application.notes or '' }}</textarea>
+    </label>
+    <label>
+      Full job description
+      <textarea name="full_jd">{{ application.full_jd or '' }}</textarea>
+    </label>
+    <button type="submit">Save changes</button>
+  </form>
+</details>

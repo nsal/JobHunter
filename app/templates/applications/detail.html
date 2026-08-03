@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}{{ application.role }} · JobHunter{% endblock %}
+{% block content %}
+<div class="page-heading"><h1>{{ application.role }} at {{ application.company }}</h1><a class="button" href="/">Back to register</a></div>
+<dl class="details">
+  <dt>Payment</dt><dd>{{ application.payment or '—' }}</dd>
+  <dt>Job URL</dt><dd>{% if application.job_url %}<a href="{{ application.job_url }}">{{ application.job_url }}</a>{% else %}—{% endif %}</dd>
+  <dt>CV location</dt><dd>{% if application.cv_path %}<a href="{{ application.cv_path }}">{{ application.cv_path }}</a>{% else %}—{% endif %}</dd>
+  <dt>Recruiter</dt><dd>{{ 'Yes' if application.is_recruiter else 'No' }}</dd>
+  <dt>Fully remote</dt><dd>{{ 'Yes' if application.is_fully_remote else 'No' }}</dd>
+  <dt>Notes</dt><dd>{{ application.notes or '—' }}</dd>
+  <dt>Full job description</dt><dd class="preserve-lines">{{ application.full_jd or '—' }}</dd>
+  <dt>Submitted</dt><dd>{{ application.submitted_date }}</dd>
+</dl>
+{% include 'applications/_application_edit_form.html' %}
+{% include 'applications/_stage_history.html' %}
+{% endblock %}

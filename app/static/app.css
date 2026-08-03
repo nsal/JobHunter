@@ -1,0 +1,20 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { margin: 0; line-height: 1.45; }
+header { display: flex; gap: 1rem; padding: 1rem max(1rem, calc((100% - 72rem) / 2)); background: #1d2733; color: #fff; }
+header a { color: #fff; font-weight: 700; text-decoration: none; }
+main { max-width: 72rem; margin: 2rem auto; padding: 0 1rem; }
+.page-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.button, button { display: inline-block; border: 0; border-radius: .25rem; background: #1769aa; color: #fff; cursor: pointer; padding: .55rem .8rem; text-decoration: none; }
+form { display: grid; gap: .8rem; max-width: 48rem; margin: 1rem 0; }
+label { display: grid; gap: .25rem; font-weight: 600; }
+input, textarea, select { box-sizing: border-box; width: 100%; padding: .45rem; font: inherit; }
+textarea { min-height: 5rem; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; min-width: 60rem; width: 100%; }
+th, td { border-bottom: 1px solid #b8c2cc; padding: .55rem; text-align: left; vertical-align: top; }
+th { background: #eaf1f8; color: #17212b; }
+.error { border-left: .3rem solid #bd2727; padding: .5rem .75rem; color: #9b1515; }
+.details { display: grid; grid-template-columns: 12rem 1fr; gap: .5rem 1rem; }
+.details dt { font-weight: 700; }
+.details dd { margin: 0; }.preserve-lines { white-space: pre-wrap; }
+@media (max-width: 40rem) { .details { grid-template-columns: 1fr; gap: .15rem; } .details dd { margin-bottom: .7rem; } }
