@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +23,7 @@ templates = Jinja2Templates(directory=str(ROOT / "app" / "templates"))
 
 def now_value() -> str:
     """Return a value suitable for a datetime-local input and SQLite sorting."""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def form_values(
@@ -138,9 +138,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
             )
         if request.headers.get("HX-Request"):
             return Response(
-                headers={
-                    "HX-Redirect": f"/applications/{application_id}"
-                }
+                headers={"HX-Redirect": f"/applications/{application_id}"}
             )
         return RedirectResponse(
             f"/applications/{application_id}", status_code=303

@@ -1,8 +1,9 @@
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 from pathlib import Path
 
+import httpx2
 import pytest
-from fastapi.testclient import TestClient
+from asgi_lifespan import LifespanManager
 
 from app.main import create_app
 
@@ -13,6 +14,14 @@ def database_path(tmp_path: Path) -> str:
 
 
 @pytest.fixture
-def client(database_path: str) -> Iterator[TestClient]:
-    with TestClient(create_app(database_path)) as test_client:
+async def client(database_path: str) -> AsyncIterator[httpx2.AsyncClient]:
+    app = create_app(database_path)
+    transport = httpx2.ASGITransport(app=app)
+    async with (
+        LifespanManager(app),
+        httpx2.AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+        ) as test_client,
+    ):
         yield test_client
