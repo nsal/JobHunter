@@ -130,6 +130,9 @@
 - ⚠️ Follow-up review found that long Notes content can contribute intrinsic
   button width and expand the desktop table. Task 18 constrains the existing
   cell content to its assigned column without changing editor behavior.
+- ⚠️ The first Task 18 constraint did not cap the button's block size in the
+  browser. The completed corrective implementation uses an inner Notes preview
+  plus explicit two-line button and preview caps on desktop.
 
 ## Solution Overview
 
@@ -704,6 +707,9 @@ the dashboard untouched.
   `box-sizing: border-box`, `min-width: 0`, and `width: 100%` to the existing
   `.table-cell-content` elements so intrinsic button text cannot expand a
   fixed column.
+- [x] Add a dedicated inner Notes preview and cap both it and its editor button
+  at two desktop lines; reset those caps at the mobile breakpoint so full Notes
+  content remains readable in the stacked presentation.
 - [x] Preserve the two-line desktop clamp, ellipsis, fixed row height, Notes
   title, and Notes editor trigger while keeping the mobile stacked layout
   unrestricted and fully readable.

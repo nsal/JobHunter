@@ -532,6 +532,14 @@ def test_dashboard_styles_define_shared_typography_and_compact_history() -> (
     assert "content: attr(data-label)" in stylesheet
     assert ".applications-table .date-cell" in stylesheet
     assert "min-width: 0" in stylesheet
+    assert ".applications-table .application-notes-cell .notes-edit" in (
+        stylesheet
+    )
+    assert "block-size: 2.6em" in stylesheet
+    assert ".applications-table .application-notes-cell .notes-preview" in (
+        stylesheet
+    )
+    assert "-webkit-line-clamp: unset" in stylesheet
 
 
 def test_new_application_upload_status_uses_accessible_client_markup() -> None:
@@ -580,7 +588,10 @@ async def test_dashboard_clamps_long_application_values_to_two_lines(
     assert 'data-label="Stage"' in dashboard.text
     assert 'data-label="Stage note"' not in dashboard.text
     assert f'title="Submitted — {stage_note}"' in dashboard.text
-    assert 'data-label="Notes"' in dashboard.text
+    assert 'class="application-notes-cell" data-label="Notes"' in (
+        dashboard.text
+    )
+    assert 'class="notes-preview"' in dashboard.text
     assert f'title="{notes}"' in dashboard.text
     assert 'data-label="Submitted"' in dashboard.text
     assert 'data-label="Updated"' in dashboard.text

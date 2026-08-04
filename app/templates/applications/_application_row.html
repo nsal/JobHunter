@@ -36,10 +36,11 @@
       {{ application.current_stage }}<br>{{ application.current_stage_description or '—' }}
     </button>
   </td>
-  <td data-label="Notes" title="{{ application.notes or 'Not supplied' }}">
-    <button class="table-edit table-cell-content" type="button" data-open-notes-editor
+  <td class="application-notes-cell" data-label="Notes"
+      title="{{ application.notes or 'Not supplied' }}">
+    <button class="table-edit notes-edit" type="button" data-open-notes-editor
             data-notes-editor-url="/applications/{{ application.id }}/notes-editor">
-      {{ application.notes or '—' }}
+      <span class="notes-preview">{{ application.notes or '—' }}</span>
     </button>
   </td>
   <td class="date-cell" data-label="Submitted">
