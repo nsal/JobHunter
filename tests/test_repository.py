@@ -33,6 +33,15 @@ def test_stage_transition_is_sequenced_and_validated(
     application_id = repository.create_application(
         {"role": "Developer", "company": "Acme"}, "2026-01-01T09:00:00"
     )
+    initial_history = repository.get_application(application_id)["history"]
+    with pytest.raises(ValueError, match="Choose a new stage"):
+        repository.add_stage(application_id, "", "2026-01-02T09:00:00")
+    with pytest.raises(ValueError, match="Submitted is created"):
+        repository.add_stage(application_id, "Submitted", "2026-01-02T09:00:00")
+    rejected = repository.get_application(application_id)
+    assert rejected["current_stage"] == "Submitted"
+    assert rejected["history"] == initial_history
+
     repository.add_stage(
         application_id, "Interview", "2026-01-02T09:00:00", "First round"
     )
@@ -47,6 +56,58 @@ def test_stage_transition_is_sequenced_and_validated(
         repository.add_stage(application_id, "Offer", "2026-01-01T00:00:00")
     with pytest.raises(ApplicationNotFoundError):
         repository.add_stage(999, "Viewed", "2026-01-02T09:00:00")
+
+
+def test_current_stage_editor_updates_note_or_appends_history(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+    repository = Repository(database_path)
+    application_id = repository.create_application(
+        {"role": "Developer", "company": "Acme"}, "2026-01-01T09:00:00"
+    )
+
+    repository.update_current_stage(
+        application_id,
+        "Submitted",
+        "Applied via referral",
+        "2026-01-02T09:00:00",
+    )
+    note_updated = repository.get_application(application_id)
+    assert note_updated["current_stage_description"] == "Applied via referral"
+    assert len(note_updated["history"]) == 1
+
+    repository.update_current_stage(
+        application_id, "Interview", "Screen", "2026-01-02T09:00:00"
+    )
+    transitioned = repository.get_application(application_id)
+    assert transitioned["current_stage"] == "Interview"
+    assert transitioned["current_stage_description"] == "Screen"
+    assert len(transitioned["history"]) == 2
+    with pytest.raises(ValueError, match="valid stage"):
+        repository.update_current_stage(
+            application_id, "Invalid", "", "2026-01-03T09:00:00"
+        )
+    with pytest.raises(ApplicationNotFoundError):
+        repository.update_current_stage(
+            999, "Viewed", "", "2026-01-03T09:00:00"
+        )
+
+
+def test_notes_editor_replaces_or_clears_notes(database_path: str) -> None:
+    initialize_database(database_path)
+    repository = Repository(database_path)
+    application_id = repository.create_application(
+        {"role": "Developer", "company": "Acme", "notes": "Old"},
+        "2026-01-01T09:00:00",
+    )
+
+    repository.update_notes(application_id, "New\nnotes")
+    assert repository.get_application(application_id)["notes"] == "New\nnotes"
+    repository.update_notes(application_id, "  ")
+    assert repository.get_application(application_id)["notes"] is None
+    with pytest.raises(ApplicationNotFoundError):
+        repository.update_notes(999, "Missing")
 
 
 def test_list_order_uses_current_stage_date(database_path: str) -> None:
@@ -65,12 +126,41 @@ def test_list_order_uses_current_stage_date(database_path: str) -> None:
     ]
 
 
+def test_searches_role_company_and_notes(database_path: str) -> None:
+    initialize_database(database_path)
+    repository = Repository(database_path)
+    role = repository.create_application(
+        {"role": "Python Engineer", "company": "Acme"},
+        "2026-01-01T09:00:00",
+    )
+    company = repository.create_application(
+        {"role": "Designer", "company": "Pythonic Ltd"},
+        "2026-01-02T09:00:00",
+    )
+    notes = repository.create_application(
+        {"role": "Manager", "company": "Beta", "notes": "PYTHON call"},
+        "2026-01-03T09:00:00",
+    )
+
+    assert {item["id"] for item in repository.list_applications("python")} == {
+        role,
+        company,
+        notes,
+    }
+    assert repository.list_applications("missing") == []
+    assert len(repository.list_applications("   ")) == 3
+
+
 def test_normalizes_optional_job_url_and_local_cv_path(
-    database_path: str, tmp_path: Path
+    database_path: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     initialize_database(database_path)
     repository = Repository(database_path)
-    cv_path = tmp_path / "resume.pdf"
+    cv_root = tmp_path / "cvs"
+    cv_root.mkdir()
+    monkeypatch.setenv("JOBHUNTER_CV_ROOT", str(cv_root))
+    cv_path = cv_root / "resume.pdf"
+    cv_path.touch()
     application_id = repository.create_application(
         {
             "role": "Developer",
@@ -91,12 +181,81 @@ def test_normalizes_optional_job_url_and_local_cv_path(
             "role": "Developer",
             "company": "Acme",
             "job_url": "",
-            "cv_path": "file:///tmp/resume.pdf",
+            "cv_path": str(cv_path),
         },
     )
     updated = repository.get_application(application_id)
     assert updated["job_url"] is None
-    assert updated["cv_path"] == "file:///tmp/resume.pdf"
+    assert updated["cv_path"] == cv_path.as_uri()
+
+
+@pytest.mark.parametrize("suffix", [".pdf", ".doc", ".docx"])
+def test_accepts_supported_cv_files(
+    database_path: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    suffix: str,
+) -> None:
+    initialize_database(database_path)
+    repository = Repository(database_path)
+    cv_root = tmp_path / "cvs"
+    cv_root.mkdir()
+    monkeypatch.setenv("JOBHUNTER_CV_ROOT", str(cv_root))
+    cv_path = cv_root / f"resume{suffix}"
+    cv_path.touch()
+
+    application_id = repository.create_application(
+        {"role": "Developer", "company": "Acme", "cv_path": str(cv_path)},
+        "2026-01-01T09:00:00",
+    )
+
+    assert (
+        repository.get_application(application_id)["cv_path"]
+        == cv_path.as_uri()
+    )
+
+
+@pytest.mark.parametrize("name", ["missing.pdf", "resume.txt"])
+def test_rejects_missing_or_unsupported_cv_files(
+    database_path: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+) -> None:
+    initialize_database(database_path)
+    repository = Repository(database_path)
+    cv_root = tmp_path / "cvs"
+    cv_root.mkdir()
+    monkeypatch.setenv("JOBHUNTER_CV_ROOT", str(cv_root))
+    candidate = cv_root / name
+    if candidate.suffix == ".txt":
+        candidate.touch()
+
+    with pytest.raises(ValueError):
+        repository.create_application(
+            {"role": "Developer", "company": "Acme", "cv_path": str(candidate)},
+            "2026-01-01T09:00:00",
+        )
+
+
+def test_rejects_cv_file_outside_configured_root(
+    database_path: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initialize_database(database_path)
+    repository = Repository(database_path)
+    cv_root = tmp_path / "cvs"
+    cv_root.mkdir()
+    monkeypatch.setenv("JOBHUNTER_CV_ROOT", str(cv_root))
+    outside = tmp_path / "resume.pdf"
+    outside.touch()
+
+    with pytest.raises(ValueError, match="configured CV root"):
+        repository.create_application(
+            {"role": "Developer", "company": "Acme", "cv_path": str(outside)},
+            "2026-01-01T09:00:00",
+        )
 
 
 @pytest.mark.parametrize(

@@ -1,0 +1,17 @@
+<section id="notes-editor">
+  <header class="dialog-heading">
+    <h2>Update notes</h2>
+    <button type="button" data-close-dialog="notes-editor-dialog">Close</button>
+  </header>
+  <form method="post" action="/applications/{{ application.id }}/notes-editor"
+        hx-post="/applications/{{ application.id }}/notes-editor"
+        hx-target="#application-{{ application.id }}" hx-swap="outerHTML">
+    <label>Notes
+      <textarea name="notes">{{ application.notes or '' }}</textarea>
+    </label>
+    <div class="form-actions">
+      <button type="submit">Save notes</button>
+      <button type="button" data-close-dialog="notes-editor-dialog">Cancel</button>
+    </div>
+  </form>
+</section>

@@ -1,8 +1,12 @@
 <section id="application-form">
-  <h1>{{ submit_label }}</h1>
+  <header class="dialog-heading">
+    <h1>{{ submit_label }}</h1>
+  </header>
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
   <form method="post" action="{{ action }}" hx-post="{{ action }}"
-        hx-target="#application-form" hx-swap="outerHTML">
+        hx-target="#application-form" hx-swap="outerHTML" class="application-form"
+        enctype="multipart/form-data" hx-encoding="multipart/form-data">
+    <div class="form-grid">
     <label>
       Role
       <input name="role" value="{{ application.role or '' }}" required>
@@ -19,28 +23,50 @@
       Job URL
       <input name="job_url" value="{{ application.job_url or '' }}">
     </label>
-    <label>
-      CV location
-      <input name="cv_path" value="{{ application.cv_path or '' }}">
-    </label>
-    <label>
+    <div class="cv-control">
+      <input type="hidden" name="cv_path" value="{{ application.cv_path or '' }}">
+      <span id="application-cv-label">CV</span>
+      <label class="button file-picker-button">
+        <span>Choose CV</span>
+        <input id="application-cv-upload" class="file-picker-input"
+               type="file" name="cv_upload" accept=".pdf,.doc,.docx"
+               aria-describedby="application-cv-status application-cv-guidance"
+               data-cv-upload>
+      </label>
+      <span id="application-cv-status" class="file-upload-status"
+            data-cv-status role="status">
+        No file selected
+      </span>
+      <span id="application-cv-guidance" class="file-upload-guidance">
+        PDF, DOC, or DOCX up to 10 MiB
+      </span>
+    </div>
+    <label class="checkbox-label">
       <input type="checkbox" name="is_recruiter"
              {% if application.is_recruiter %}checked{% endif %}>
-      Recruiter
+      Agency
     </label>
-    <label>
+    <label class="checkbox-label">
       <input type="checkbox" name="is_fully_remote"
              {% if application.is_fully_remote %}checked{% endif %}>
       Fully remote
     </label>
-    <label>
+    <label class="wide-field">
       Notes
       <textarea name="notes">{{ application.notes or '' }}</textarea>
     </label>
-    <label>
+    <label class="wide-field">
       Full job description
       <textarea name="full_jd">{{ application.full_jd or '' }}</textarea>
     </label>
-    <button type="submit">{{ submit_label }}</button>
+    </div>
+    <div class="form-actions">
+      <button type="submit">{{ submit_label }}</button>
+      {% if is_dialog %}
+      <button type="button" data-close-dialog="application-dialog">Cancel</button>
+      {% else %}
+      <a class="button" href="/">Cancel</a>
+      {% endif %}
+    </div>
   </form>
 </section>

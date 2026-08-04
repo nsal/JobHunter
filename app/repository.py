@@ -5,8 +5,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
 
+from app.cv_files import CvFileError, normalize_cv_location
 from app.database import STAGES, connect
 
 
@@ -43,26 +44,10 @@ def _job_url(value: str | None) -> str | None:
 
 def _cv_location(value: str | None) -> str | None:
     """Return an optional local CV location as a canonical file URI."""
-    cleaned = _optional(value)
-    if cleaned is None:
-        return None
-    parsed = urlsplit(cleaned)
-    if parsed.scheme:
-        if (
-            parsed.scheme.lower() != "file"
-            or parsed.netloc not in {"", "localhost"}
-            or parsed.query
-            or parsed.fragment
-        ):
-            raise ValueError(
-                "CV location must be an absolute path or file URL."
-            )
-        path = Path(unquote(parsed.path))
-    else:
-        path = Path(cleaned)
-    if not path.is_absolute():
-        raise ValueError("CV location must be an absolute path or file URL.")
-    return path.as_uri()
+    try:
+        return normalize_cv_location(value)
+    except CvFileError as error:
+        raise ValueError(str(error)) from error
 
 
 def _safe_job_url(value: Any) -> str | None:
@@ -141,8 +126,19 @@ class Repository:
             )
         return application_id
 
-    def list_applications(self) -> list[dict[str, Any]]:
+    def list_applications(
+        self, search: str | None = None
+    ) -> list[dict[str, Any]]:
         """Return applications ordered by their current-stage start time."""
+        query = (search or "").strip()
+        where = ""
+        parameters: tuple[str, ...] = ()
+        if query:
+            pattern = f"%{query.lower()}%"
+            where = """WHERE LOWER(a.role) LIKE ?
+                OR LOWER(a.company) LIKE ?
+                OR LOWER(COALESCE(a.notes, '')) LIKE ?"""
+            parameters = (pattern, pattern, pattern)
         with connect(self.database_path) as connection:
             rows = connection.execute(
                 """SELECT a.*, h.stage AS current_stage,
@@ -155,7 +151,11 @@ class Repository:
                 JOIN submission_history AS submitted
                   ON submitted.application_id = a.id
                  AND submitted.stage_sequence = 1
-                ORDER BY h.effective_from DESC, a.id DESC"""
+                """
+                + where
+                + """
+                ORDER BY h.effective_from DESC, a.id DESC""",
+                parameters,
             ).fetchall()
         return [_sanitize_stored_links(dict(row)) for row in rows]
 
@@ -214,6 +214,16 @@ class Repository:
             if cursor.rowcount == 0:
                 raise ApplicationNotFoundError("Application not found.")
 
+    def update_notes(self, application_id: int, notes: str | None) -> None:
+        """Replace an application's notes without changing other fields."""
+        with connect(self.database_path) as connection:
+            cursor = connection.execute(
+                "UPDATE applications SET notes = ? WHERE id = ?",
+                (_optional(notes), application_id),
+            )
+            if cursor.rowcount == 0:
+                raise ApplicationNotFoundError("Application not found.")
+
     def add_stage(
         self,
         application_id: int,
@@ -222,6 +232,10 @@ class Repository:
         description: str | None = None,
     ) -> None:
         """Close the current stage and append a new current stage atomically."""
+        if not stage:
+            raise ValueError("Choose a new stage.")
+        if stage == "Submitted":
+            raise ValueError("Submitted is created with the application.")
         if stage not in STAGES:
             raise ValueError("Choose a valid stage.")
         if not effective_from:
@@ -262,3 +276,34 @@ class Repository:
                     effective_from,
                 ),
             )
+
+    def update_current_stage(
+        self,
+        application_id: int,
+        stage: str,
+        description: str | None,
+        effective_from: str,
+    ) -> None:
+        """Update a current note or append a stage transition."""
+        if stage not in STAGES:
+            raise ValueError("Choose a valid stage.")
+        with connect(self.database_path) as connection:
+            current = connection.execute(
+                """SELECT id, stage FROM submission_history
+                WHERE application_id = ? AND is_current = 1""",
+                (application_id,),
+            ).fetchone()
+            if current is None:
+                exists = connection.execute(
+                    "SELECT 1 FROM applications WHERE id = ?", (application_id,)
+                ).fetchone()
+                if exists is None:
+                    raise ApplicationNotFoundError("Application not found.")
+                raise ValueError("Application has no current stage.")
+            if current["stage"] == stage:
+                connection.execute(
+                    "UPDATE submission_history SET stage_description = ? WHERE id = ?",
+                    (_optional(description), current["id"]),
+                )
+                return
+        self.add_stage(application_id, stage, effective_from, description)

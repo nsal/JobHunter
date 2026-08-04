@@ -1,0 +1,21 @@
+<section id="stage-editor">
+  <header class="dialog-heading">
+    <h2>Update current stage</h2>
+    <button type="button" data-close-dialog="stage-editor-dialog">Close</button>
+  </header>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/applications/{{ application.id }}/stage-editor"
+        hx-post="/applications/{{ application.id }}/stage-editor"
+        hx-target="#application-{{ application.id }}" hx-swap="outerHTML">
+    <label>Current stage
+      <select name="stage">{% for item in stages %}<option value="{{ item }}" {% if (stage_values and stage_values.stage == item) or (not stage_values and application.current_stage == item) %}selected{% endif %}>{{ item }}</option>{% endfor %}</select>
+    </label>
+    <label>Stage note
+      <textarea name="stage_description">{{ stage_values.stage_description if stage_values else application.current_stage_description or '' }}</textarea>
+    </label>
+    <div class="form-actions">
+      <button type="submit">Save stage</button>
+      <button type="button" data-close-dialog="stage-editor-dialog">Cancel</button>
+    </div>
+  </form>
+</section>

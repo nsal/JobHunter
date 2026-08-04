@@ -6,9 +6,28 @@
   <title>{% block title %}JobHunter{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
   <script src="https://unpkg.com/htmx.org@2.0.2"></script>
+  <script src="{{ url_for('static', path='app.js') }}" defer></script>
 </head>
 <body>
   <header><a href="/">JobHunter</a><span>Local application register</span></header>
-  <main>{% block content %}{% endblock %}</main>
+  <main class="{% block main_class %}{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+  <dialog id="cv-preview-dialog" aria-label="CV preview">
+    <header class="dialog-heading">
+      <h2>CV preview</h2>
+      <button type="button" data-close-dialog="cv-preview-dialog">Close</button>
+    </header>
+    <iframe id="cv-preview-frame" title="CV preview"></iframe>
+  </dialog>
+  <dialog id="application-dialog" aria-label="Create application">
+    <div id="application-dialog-content"></div>
+  </dialog>
+  <dialog id="stage-editor-dialog" aria-label="Update current stage">
+    <div id="stage-editor-content"></div>
+  </dialog>
+  <dialog id="notes-editor-dialog" aria-label="Update notes">
+    <div id="notes-editor-content"></div>
+  </dialog>
 </body>
 </html>

@@ -4,13 +4,19 @@
 <div class="page-heading"><h1>{{ application.role }} at {{ application.company }}</h1><a class="button" href="/">Back to register</a></div>
 <dl class="details">
   <dt>Payment</dt><dd>{{ application.payment or '—' }}</dd>
-  <dt>Job URL</dt><dd>{% if application.job_url %}<a href="{{ application.job_url }}">{{ application.job_url }}</a>{% else %}—{% endif %}</dd>
-  <dt>CV location</dt><dd>{% if application.cv_path %}<a href="{{ application.cv_path }}">{{ application.cv_path }}</a>{% else %}—{% endif %}</dd>
-  <dt>Recruiter</dt><dd>{{ 'Yes' if application.is_recruiter else 'No' }}</dd>
+  <dt>Job URL</dt>
+  <dd>
+    {% if application.job_url %}
+      <a href="{{ application.job_url }}" target="_blank"
+         rel="noopener noreferrer">{{ application.job_url }}</a>
+    {% else %}—{% endif %}
+  </dd>
+  <dt>CV</dt><dd>{% if application.cv_path %}{% if (application.cv_path|lower).endswith('.pdf') %}<button type="button" data-preview-url="/applications/{{ application.id }}/cv/preview">Preview CV</button>{% else %}<a href="/applications/{{ application.id }}/cv/download">Download CV</a>{% endif %}{% else %}—{% endif %}</dd>
+  <dt>Agency</dt><dd>{{ 'Yes' if application.is_recruiter else 'No' }}</dd>
   <dt>Fully remote</dt><dd>{{ 'Yes' if application.is_fully_remote else 'No' }}</dd>
   <dt>Notes</dt><dd>{{ application.notes or '—' }}</dd>
-  <dt>Full job description</dt><dd class="preserve-lines">{{ application.full_jd or '—' }}</dd>
-  <dt>Submitted</dt><dd>{{ application.submitted_date }}</dd>
+  <dt>Full job description</dt><dd class="preserve-lines">{% if application.full_jd and application.full_jd|length > 300 %}<details><summary>{{ application.full_jd|preview_text }}</summary>{{ application.full_jd }}</details>{% else %}{{ application.full_jd or '—' }}{% endif %}</dd>
+  <dt>Submitted</dt><dd>{{ application.submitted_date|date_only }}</dd>
 </dl>
 {% include 'applications/_application_edit_form.html' %}
 {% include 'applications/_stage_history.html' %}

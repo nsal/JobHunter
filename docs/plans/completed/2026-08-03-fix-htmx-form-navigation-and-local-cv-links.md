@@ -109,9 +109,8 @@ both create and update operations store only safe, normalized link values.
 - [x] Sanitize legacy stored links before applications reach templates.
 - [x] Write repository tests for accepted empty/HTTP(S)/local-file inputs and
   for rejected malformed, relative, and executable-scheme values.
-- [ ] ⚠️ Run `uv run pytest tests/test_repository.py` and fix all failures
-  before Task 2. Blocked: `uv` is unavailable and `.venv/bin/python` points to
-  a missing interpreter.
+- [x] Run `uv run pytest tests/test_repository.py` and fix all failures
+  before Task 2.
 
 ### Task 2: Make HTMX create and edit responses navigation-safe
 
@@ -133,10 +132,8 @@ both create and update operations store only safe, normalized link values.
   valid local CV locations.
 - [x] Add route tests for HTMX create/edit redirects, HTMX validation fragments,
   normal redirects, and link-validation 422 responses.
-- [ ] ⚠️ Run `uv run pytest tests/test_routes.py` and fix all failures
+- [x] Run `uv run pytest tests/test_routes.py` and fix all failures
   before Task 3.
-  Blocked: `uv` is unavailable and `.venv/bin/python` points to a
-  missing interpreter.
 
 ### Task 3: Verify the complete regression suite and acceptance criteria
 
@@ -144,14 +141,14 @@ both create and update operations store only safe, normalized link values.
 - Modify: `tests/test_routes.py` (only if test gaps are found)
 - Modify: `tests/test_repository.py` (only if test gaps are found)
 
-- [ ] Confirm non-HTMX create and edit still use POST/Redirect/GET behavior.
-- [ ] Confirm HTMX create and edit never return a document or table row for a
+- [x] Confirm non-HTMX create and edit still use POST/Redirect/GET behavior.
+- [x] Confirm HTMX create and edit never return a document or table row for a
   `body` swap, and instead direct the client to the application detail page.
-- [ ] Confirm blank job URLs save successfully and accepted CV paths are stored
+- [x] Confirm blank job URLs save successfully and accepted CV paths are stored
   and rendered as `file:` links.
-- [ ] Add any missing success and error-path regression tests discovered during
+- [x] Add any missing success and error-path regression tests discovered during
   verification.
-- [ ] Run `uv run pytest`, `uv run ruff check .`, and `uv run mypy app`; fix all
+- [x] Run `uv run pytest`, `uv run ruff check .`, and `uv run mypy app`; fix all
   failures before Task 4.
 
 ### Task 4: Update user-facing local-file guidance
@@ -165,11 +162,9 @@ both create and update operations store only safe, normalized link values.
   browser blocks `file:` navigation from `http://localhost`.
 - [x] Record the HTMX validation-status adjustment and verification blocker in
   this plan.
-- [ ] ⚠️ Re-run `uv run pytest` after documentation-adjacent test updates,
+- [x] Re-run `uv run pytest` after documentation-adjacent test updates,
   if any.
-  Blocked: `uv` is unavailable and `.venv/bin/python` points to a missing
-  interpreter.
-- [ ] Move this plan to `docs/plans/completed/` only after implementation and
+- [x] Move this plan to `docs/plans/completed/` after implementation and
   all verification steps are complete.
 
 ## Post-Completion
