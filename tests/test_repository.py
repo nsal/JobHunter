@@ -65,12 +65,41 @@ def test_list_order_uses_current_stage_date(database_path: str) -> None:
     ]
 
 
+def test_searches_role_company_and_notes(database_path: str) -> None:
+    initialize_database(database_path)
+    repository = Repository(database_path)
+    role = repository.create_application(
+        {"role": "Python Engineer", "company": "Acme"},
+        "2026-01-01T09:00:00",
+    )
+    company = repository.create_application(
+        {"role": "Designer", "company": "Pythonic Ltd"},
+        "2026-01-02T09:00:00",
+    )
+    notes = repository.create_application(
+        {"role": "Manager", "company": "Beta", "notes": "PYTHON call"},
+        "2026-01-03T09:00:00",
+    )
+
+    assert {item["id"] for item in repository.list_applications("python")} == {
+        role,
+        company,
+        notes,
+    }
+    assert repository.list_applications("missing") == []
+    assert len(repository.list_applications("   ")) == 3
+
+
 def test_normalizes_optional_job_url_and_local_cv_path(
-    database_path: str, tmp_path: Path
+    database_path: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     initialize_database(database_path)
     repository = Repository(database_path)
-    cv_path = tmp_path / "resume.pdf"
+    cv_root = tmp_path / "cvs"
+    cv_root.mkdir()
+    monkeypatch.setenv("JOBHUNTER_CV_ROOT", str(cv_root))
+    cv_path = cv_root / "resume.pdf"
+    cv_path.touch()
     application_id = repository.create_application(
         {
             "role": "Developer",
@@ -91,12 +120,81 @@ def test_normalizes_optional_job_url_and_local_cv_path(
             "role": "Developer",
             "company": "Acme",
             "job_url": "",
-            "cv_path": "file:///tmp/resume.pdf",
+            "cv_path": str(cv_path),
         },
     )
     updated = repository.get_application(application_id)
     assert updated["job_url"] is None
-    assert updated["cv_path"] == "file:///tmp/resume.pdf"
+    assert updated["cv_path"] == cv_path.as_uri()
+
+
+@pytest.mark.parametrize("suffix", [".pdf", ".doc", ".docx"])
+def test_accepts_supported_cv_files(
+    database_path: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    suffix: str,
+) -> None:
+    initialize_database(database_path)
+    repository = Repository(database_path)
+    cv_root = tmp_path / "cvs"
+    cv_root.mkdir()
+    monkeypatch.setenv("JOBHUNTER_CV_ROOT", str(cv_root))
+    cv_path = cv_root / f"resume{suffix}"
+    cv_path.touch()
+
+    application_id = repository.create_application(
+        {"role": "Developer", "company": "Acme", "cv_path": str(cv_path)},
+        "2026-01-01T09:00:00",
+    )
+
+    assert (
+        repository.get_application(application_id)["cv_path"]
+        == cv_path.as_uri()
+    )
+
+
+@pytest.mark.parametrize("name", ["missing.pdf", "resume.txt"])
+def test_rejects_missing_or_unsupported_cv_files(
+    database_path: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+) -> None:
+    initialize_database(database_path)
+    repository = Repository(database_path)
+    cv_root = tmp_path / "cvs"
+    cv_root.mkdir()
+    monkeypatch.setenv("JOBHUNTER_CV_ROOT", str(cv_root))
+    candidate = cv_root / name
+    if candidate.suffix == ".txt":
+        candidate.touch()
+
+    with pytest.raises(ValueError):
+        repository.create_application(
+            {"role": "Developer", "company": "Acme", "cv_path": str(candidate)},
+            "2026-01-01T09:00:00",
+        )
+
+
+def test_rejects_cv_file_outside_configured_root(
+    database_path: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    initialize_database(database_path)
+    repository = Repository(database_path)
+    cv_root = tmp_path / "cvs"
+    cv_root.mkdir()
+    monkeypatch.setenv("JOBHUNTER_CV_ROOT", str(cv_root))
+    outside = tmp_path / "resume.pdf"
+    outside.touch()
+
+    with pytest.raises(ValueError, match="configured CV root"):
+        repository.create_application(
+            {"role": "Developer", "company": "Acme", "cv_path": str(outside)},
+            "2026-01-01T09:00:00",
+        )
 
 
 @pytest.mark.parametrize(

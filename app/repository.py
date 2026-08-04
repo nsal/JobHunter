@@ -5,8 +5,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
 
+from app.cv_files import CvFileError, normalize_cv_location
 from app.database import STAGES, connect
 
 
@@ -43,26 +44,10 @@ def _job_url(value: str | None) -> str | None:
 
 def _cv_location(value: str | None) -> str | None:
     """Return an optional local CV location as a canonical file URI."""
-    cleaned = _optional(value)
-    if cleaned is None:
-        return None
-    parsed = urlsplit(cleaned)
-    if parsed.scheme:
-        if (
-            parsed.scheme.lower() != "file"
-            or parsed.netloc not in {"", "localhost"}
-            or parsed.query
-            or parsed.fragment
-        ):
-            raise ValueError(
-                "CV location must be an absolute path or file URL."
-            )
-        path = Path(unquote(parsed.path))
-    else:
-        path = Path(cleaned)
-    if not path.is_absolute():
-        raise ValueError("CV location must be an absolute path or file URL.")
-    return path.as_uri()
+    try:
+        return normalize_cv_location(value)
+    except CvFileError as error:
+        raise ValueError(str(error)) from error
 
 
 def _safe_job_url(value: Any) -> str | None:
@@ -141,8 +126,19 @@ class Repository:
             )
         return application_id
 
-    def list_applications(self) -> list[dict[str, Any]]:
+    def list_applications(
+        self, search: str | None = None
+    ) -> list[dict[str, Any]]:
         """Return applications ordered by their current-stage start time."""
+        query = (search or "").strip()
+        where = ""
+        parameters: tuple[str, ...] = ()
+        if query:
+            pattern = f"%{query.lower()}%"
+            where = """WHERE LOWER(a.role) LIKE ?
+                OR LOWER(a.company) LIKE ?
+                OR LOWER(COALESCE(a.notes, '')) LIKE ?"""
+            parameters = (pattern, pattern, pattern)
         with connect(self.database_path) as connection:
             rows = connection.execute(
                 """SELECT a.*, h.stage AS current_stage,
@@ -155,7 +151,11 @@ class Repository:
                 JOIN submission_history AS submitted
                   ON submitted.application_id = a.id
                  AND submitted.stage_sequence = 1
-                ORDER BY h.effective_from DESC, a.id DESC"""
+                """
+                + where
+                + """
+                ORDER BY h.effective_from DESC, a.id DESC""",
+                parameters,
             ).fetchall()
         return [_sanitize_stored_links(dict(row)) for row in rows]
 

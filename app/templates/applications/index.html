@@ -1,9 +1,15 @@
 {% extends 'base.html' %}
 {% block title %}Applications · JobHunter{% endblock %}
 {% block content %}
-<div class="page-heading"><h1>Applications</h1><a class="button" href="/applications/new">New application</a></div>
+<div class="page-heading"><h1>Applications</h1><button type="button" data-open-application-dialog>New application</button></div>
+<form class="search-form" method="get" action="/">
+  <label for="application-search">Search applications</label>
+  <input id="application-search" name="q" value="{{ q }}" placeholder="Role, company, or notes">
+  <button type="submit">Search</button>
+  {% if q %}<a class="button" href="/">Clear</a>{% endif %}
+</form>
 <div class="table-wrap"><table>
-  <thead><tr><th>Role</th><th>Company</th><th>Payment</th><th>Job URL</th><th>CV</th><th>Recruiter</th><th>Fully remote</th><th>Current stage</th><th>Stage note</th><th>Submitted</th><th>Last updated</th></tr></thead>
-  <tbody id="applications">{% for application in applications %}{% include 'applications/_application_row.html' %}{% else %}<tr><td colspan="11">No applications yet.</td></tr>{% endfor %}</tbody>
+  <thead><tr><th>Role</th><th>Company</th><th>Payment</th><th>Job URL</th><th>CV</th><th>Recruiter</th><th>Fully remote</th><th>Current stage</th><th>Stage note</th><th>Notes</th><th>Submitted</th><th>Last updated</th></tr></thead>
+  <tbody id="applications">{% for application in applications %}{% include 'applications/_application_row.html' %}{% else %}<tr><td colspan="12">{% if q %}No applications match “{{ q }}”.{% else %}No applications yet.{% endif %}</td></tr>{% endfor %}</tbody>
 </table></div>
 {% endblock %}

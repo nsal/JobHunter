@@ -2,7 +2,8 @@
   <h1>{{ submit_label }}</h1>
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
   <form method="post" action="{{ action }}" hx-post="{{ action }}"
-        hx-target="#application-form" hx-swap="outerHTML">
+        hx-target="#application-form" hx-swap="outerHTML" class="application-form">
+    <div class="form-grid">
     <label>
       Role
       <input name="role" value="{{ application.role or '' }}" required>
@@ -19,28 +20,31 @@
       Job URL
       <input name="job_url" value="{{ application.job_url or '' }}">
     </label>
-    <label>
-      CV location
-      <input name="cv_path" value="{{ application.cv_path or '' }}">
-    </label>
-    <label>
+    <div class="cv-control">
+      <span>CV</span>
+      <input type="hidden" name="cv_path" value="{{ application.cv_path or '' }}">
+      <span data-cv-name>{{ application.cv_path.rsplit('/', 1)[-1] if application.cv_path else 'No CV selected' }}</span>
+      <button type="button" data-open-cv-picker>Choose file</button>
+    </div>
+    <label class="checkbox-label">
       <input type="checkbox" name="is_recruiter"
              {% if application.is_recruiter %}checked{% endif %}>
       Recruiter
     </label>
-    <label>
+    <label class="checkbox-label">
       <input type="checkbox" name="is_fully_remote"
              {% if application.is_fully_remote %}checked{% endif %}>
       Fully remote
     </label>
-    <label>
+    <label class="wide-field">
       Notes
       <textarea name="notes">{{ application.notes or '' }}</textarea>
     </label>
-    <label>
+    <label class="wide-field">
       Full job description
       <textarea name="full_jd">{{ application.full_jd or '' }}</textarea>
     </label>
+    </div>
     <button type="submit">{{ submit_label }}</button>
   </form>
 </section>

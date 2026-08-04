@@ -3,11 +3,12 @@
   <td>{{ application.company }}</td>
   <td>{{ application.payment or '—' }}</td>
   <td>{% if application.job_url %}<a href="{{ application.job_url }}">Job post</a>{% else %}—{% endif %}</td>
-  <td>{% if application.cv_path %}<a href="{{ application.cv_path }}">CV</a>{% else %}—{% endif %}</td>
+  <td>{% if application.cv_path %}<a href="/applications/{{ application.id }}">CV</a>{% else %}—{% endif %}</td>
   <td>{{ 'Yes' if application.is_recruiter else 'No' }}</td>
   <td>{{ 'Yes' if application.is_fully_remote else 'No' }}</td>
   <td>{{ application.current_stage }}</td>
   <td>{{ application.current_stage_description or '—' }}</td>
-  <td>{{ application.submitted_date }}</td>
-  <td>{{ application.last_updated_date }}</td>
+  <td>{{ application.notes|preview_text }}</td>
+  <td>{{ application.submitted_date|date_only }}</td>
+  <td>{{ application.last_updated_date|date_only }}</td>
 </tr>

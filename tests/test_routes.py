@@ -1,3 +1,6 @@
+from pathlib import Path
+from urllib.parse import quote
+
 import httpx2
 import pytest
 
@@ -129,3 +132,157 @@ async def test_link_validation_and_optional_job_url(
         follow_redirects=False,
     )
     assert created.status_code == 303
+
+
+async def test_cv_picker_and_delivery_routes(
+    client: httpx2.AsyncClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cv_root = tmp_path / "cvs"
+    cv_root.mkdir()
+    folder = cv_root / "roles"
+    folder.mkdir()
+    special_folder_name = "Résumé & # space"
+    special_folder = cv_root / special_folder_name
+    special_folder.mkdir()
+    nested_special_folder = special_folder / "nested"
+    nested_special_folder.mkdir()
+    pdf = folder / "resume.pdf"
+    pdf.write_bytes(b"%PDF-1.4")
+    docx = cv_root / "resume.docx"
+    docx.write_bytes(b"word content")
+    (cv_root / "ignore.txt").touch()
+    monkeypatch.setenv("JOBHUNTER_CV_ROOT", str(cv_root))
+
+    picker = await client.get("/cv-picker")
+    assert picker.status_code == 200
+    assert "roles" in picker.text
+    assert "ignore.txt" not in picker.text
+    encoded_special_folder = quote(special_folder_name, safe="")
+    assert f"directory={encoded_special_folder}" in picker.text
+
+    folder_picker = await client.get("/cv-picker?directory=roles")
+    assert folder_picker.status_code == 200
+    assert pdf.as_uri() in folder_picker.text
+
+    encoded_nested_special_folder = quote(
+        f"{special_folder_name}/nested", safe=""
+    )
+    special_picker = await client.get(
+        f"/cv-picker?directory={encoded_nested_special_folder}"
+    )
+    assert special_picker.status_code == 200
+    assert f"directory={encoded_special_folder}" in special_picker.text
+
+    created = await client.post(
+        "/applications",
+        data={"role": "Engineer", "company": "Acme", "cv_path": str(pdf)},
+        follow_redirects=False,
+    )
+    location = created.headers["location"]
+    preview = await client.get(f"{location}/cv/preview")
+    assert preview.status_code == 200
+    assert preview.headers["content-type"] == "application/pdf"
+    assert "inline" in preview.headers["content-disposition"]
+
+    updated = await client.post(
+        location,
+        data={"role": "Engineer", "company": "Acme", "cv_path": str(docx)},
+        follow_redirects=False,
+    )
+    assert updated.status_code == 303
+    assert (await client.get(f"{location}/cv/preview")).status_code == 422
+    download = await client.get(f"{location}/cv/download")
+    assert download.status_code == 200
+    assert "attachment" in download.headers["content-disposition"]
+
+
+async def test_cv_detail_actions_are_case_insensitive(
+    client: httpx2.AsyncClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cv_root = tmp_path / "cvs"
+    cv_root.mkdir()
+    monkeypatch.setenv("JOBHUNTER_CV_ROOT", str(cv_root))
+    pdf = cv_root / "resume.PDF"
+    pdf.write_bytes(b"%PDF-1.4")
+    docx = cv_root / "resume.DOCX"
+    docx.write_bytes(b"word content")
+
+    created = await client.post(
+        "/applications",
+        data={"role": "Engineer", "company": "Acme", "cv_path": str(pdf)},
+        follow_redirects=False,
+    )
+    location = created.headers["location"]
+    detail = await client.get(location)
+    assert "Preview CV" in detail.text
+    assert "Download CV" not in detail.text
+    assert (await client.get(f"{location}/cv/preview")).status_code == 200
+
+    updated = await client.post(
+        location,
+        data={"role": "Engineer", "company": "Acme", "cv_path": str(docx)},
+        follow_redirects=False,
+    )
+    assert updated.status_code == 303
+    detail = await client.get(location)
+    assert "Download CV" in detail.text
+    assert "Preview CV" not in detail.text
+
+
+async def test_cv_routes_reject_invalid_picker_and_legacy_paths(
+    client: httpx2.AsyncClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cv_root = tmp_path / "cvs"
+    cv_root.mkdir()
+    monkeypatch.setenv("JOBHUNTER_CV_ROOT", str(cv_root))
+    assert (
+        await client.get("/cv-picker?directory=../outside")
+    ).status_code == 400
+
+    created = await client.post(
+        "/applications",
+        data={"role": "Engineer", "company": "Acme"},
+        follow_redirects=False,
+    )
+    assert (
+        await client.get(f"{created.headers['location']}/cv/download")
+    ).status_code == 404
+
+
+async def test_dashboard_overlay_search_dates_and_previews(
+    client: httpx2.AsyncClient,
+) -> None:
+    description = "D" * 301
+    notes = "N" * 301
+    created = await client.post(
+        "/applications",
+        data={
+            "role": "Engineer",
+            "company": "Acme",
+            "notes": notes,
+            "full_jd": description,
+        },
+        follow_redirects=False,
+    )
+    location = created.headers["location"]
+
+    dashboard = await client.get("/?q=acme")
+    assert "data-open-application-dialog" in dashboard.text
+    assert 'value="acme"' in dashboard.text
+    assert "T" not in dashboard.text
+    assert ("N" * 300) + "…" in dashboard.text
+
+    form = await client.get("/applications/new", headers={"HX-Request": "true"})
+    assert form.status_code == 200
+    assert 'id="application-form"' in form.text
+    assert "form-grid" in form.text
+
+    detail = await client.get(location)
+    assert "<details>" in detail.text
+    assert ("D" * 300) + "…" in detail.text
