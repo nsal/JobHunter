@@ -322,17 +322,30 @@ async def test_dashboard_overlay_search_dates_and_previews(
     dashboard = await client.get("/?q=acme")
     assert "data-open-application-dialog" in dashboard.text
     assert 'value="acme"' in dashboard.text
-    assert ">2026-08-04</time>" in dashboard.text
+    assert "2026-08-04" in dashboard.text
     assert ("N" * 300) + "…" in dashboard.text
     assert 'class="search-action"' in dashboard.text
     assert 'class="button search-action"' in dashboard.text
-    assert 'class="date-cell"><time datetime=' in dashboard.text
+    assert 'class="date-cell" data-label="Submitted"' in dashboard.text
+    assert 'datetime="2026-08-04T' in dashboard.text
 
     form = await client.get("/applications/new", headers={"HX-Request": "true"})
     assert form.status_code == 200
     assert 'id="application-form"' in form.text
     assert "form-grid" in form.text
-    assert 'type="file" name="cv_upload"' in form.text
+    assert 'id="application-cv-upload"' in form.text
+    assert 'class="file-picker-input"' in form.text
+    assert 'type="file"' in form.text
+    assert 'name="cv_upload"' in form.text
+    assert "data-cv-upload" in form.text
+    assert "data-cv-status" in form.text
+    assert "No file selected" in form.text
+    assert "PDF, DOC, or DOCX up to 10 MiB" in form.text
+    assert (
+        'aria-describedby="application-cv-status application-cv-guidance"'
+        in (form.text)
+    )
+    assert ">Close</button>" not in form.text
     assert 'data-close-dialog="application-dialog"' in form.text
     assert 'enctype="multipart/form-data"' in form.text
 
@@ -362,6 +375,11 @@ async def test_dashboard_uses_consistent_table_markup_and_safe_job_links(
     dashboard = await client.get("/")
     assert 'class="applications-table"' in dashboard.text
     assert 'class="applications-table-header"' in dashboard.text
+    assert 'class="table-wrap applications-table-wrap"' in dashboard.text
+    assert '<abbr title="Payment">Pay</abbr>' in dashboard.text
+    assert '<abbr title="Current stage">Stage</abbr>' in dashboard.text
+    assert 'data-label="Submitted"' in dashboard.text
+    assert 'data-label="Updated"' in dashboard.text
     assert 'href="https://jobs.example.test/engineer" target="_blank"' in (
         dashboard.text
     )
@@ -389,7 +407,8 @@ async def test_dashboard_uses_an_absent_marker_for_missing_job_urls(
 
     dashboard = await client.get("/")
     assert "Job post</a>" not in dashboard.text
-    assert "<td>—</td>" in dashboard.text
+    assert 'data-label="Job post"' in dashboard.text
+    assert "—" in dashboard.text
 
     detail = await client.get(created.headers["location"])
     assert "<dt>Job URL</dt>" in detail.text
@@ -424,6 +443,46 @@ async def test_stage_history_uses_compact_layout_classes_for_multiple_entries(
     assert "Interview" in detail.text
 
 
+async def test_stage_history_requires_a_non_submitted_stage(
+    client: httpx2.AsyncClient,
+) -> None:
+    created = await client.post(
+        "/applications",
+        data={"role": "Engineer", "company": "Acme"},
+        follow_redirects=False,
+    )
+    location = created.headers["location"]
+    detail = await client.get(location)
+    assert '<option value="" disabled selected>' in detail.text
+    assert '<option value="Submitted"' not in detail.text
+
+    blank = await client.post(
+        f"{location}/stages",
+        data={"stage": "", "effective_from": "2099-01-01T09:00:00"},
+        headers={"HX-Request": "true"},
+    )
+    assert blank.status_code == 422
+    assert "Choose a new stage." in blank.text
+    assert "Current stage: <strong>Submitted</strong>" in blank.text
+
+    submitted = await client.post(
+        f"{location}/stages",
+        data={"stage": "Submitted", "effective_from": "2099-01-01T09:00:00"},
+        headers={"HX-Request": "true"},
+    )
+    assert submitted.status_code == 422
+    assert "Submitted is created with the application." in submitted.text
+    assert "Current stage: <strong>Submitted</strong>" in submitted.text
+
+    valid = await client.post(
+        f"{location}/stages",
+        data={"stage": "Viewed", "effective_from": "2099-01-01T09:00:00"},
+        headers={"HX-Request": "true"},
+    )
+    assert valid.status_code == 200
+    assert "Current stage: <strong>Viewed</strong>" in valid.text
+
+
 def test_dashboard_styles_define_shared_typography_and_compact_history() -> (
     None
 ):
@@ -435,6 +494,92 @@ def test_dashboard_styles_define_shared_typography_and_compact_history() -> (
     assert "white-space: nowrap" in stylesheet
     assert ".stage-history-table" in stylesheet
     assert "padding: .35rem .45rem" in stylesheet
+    assert ".applications-table-wrap { overflow-x: hidden; }" in stylesheet
+    assert ".applications-table { min-width: 0; table-layout: fixed; }" in (
+        stylesheet
+    )
+    assert "font-size: .8125rem" in stylesheet
+    assert "text-overflow: ellipsis" in stylesheet
+    assert ".applications-table td::before" in stylesheet
+    assert "content: attr(data-label)" in stylesheet
+    assert ".applications-table .date-cell" in stylesheet
+    assert "min-width: 0" in stylesheet
+
+
+def test_new_application_upload_status_uses_accessible_client_markup() -> None:
+    stylesheet = Path("app/static/app.css").read_text()
+    script = Path("app/static/app.js").read_text()
+    assert ".file-upload-status, .file-upload-guidance" in stylesheet
+    assert "font-size: .65rem" in stylesheet
+    assert ".file-picker-input" in stylesheet
+    assert ".file-picker-button:focus-within" in stylesheet
+    assert "outline: 3px solid" in stylesheet
+    assert "input.dataset.cvUpload === undefined" in script
+    assert '"No file selected"' in script
+
+
+async def test_dashboard_compacts_long_application_values(
+    client: httpx2.AsyncClient,
+) -> None:
+    role = "Principal Platform Engineer with a Very Long Title"
+    company = "International Example Company with a Long Legal Name"
+    stage_note = "First interview with several team members and a long agenda"
+    notes = "Follow up after the interview with the hiring committee"
+    created = await client.post(
+        "/applications",
+        data={
+            "role": role,
+            "company": company,
+            "notes": notes,
+        },
+        follow_redirects=False,
+    )
+    location = created.headers["location"]
+    updated = await client.post(
+        f"{location}/stage-editor",
+        data={"stage": "Submitted", "stage_description": stage_note},
+        follow_redirects=False,
+    )
+    assert updated.status_code == 303
+
+    dashboard = await client.get("/")
+    assert f'title="{role}"' in dashboard.text
+    assert f'title="{company}"' in dashboard.text
+    assert f'title="{stage_note}"' in dashboard.text
+    assert f'title="{notes}"' in dashboard.text
+    assert 'data-label="Current stage"' in dashboard.text
+    assert 'data-label="Stage note"' in dashboard.text
+    assert 'data-label="Notes"' in dashboard.text
+    assert 'data-label="Submitted"' in dashboard.text
+    assert 'data-label="Updated"' in dashboard.text
+
+
+async def test_agency_labels_preserve_the_existing_recruiter_field(
+    client: httpx2.AsyncClient,
+) -> None:
+    created = await client.post(
+        "/applications",
+        data={"role": "Engineer", "company": "Acme", "is_recruiter": "on"},
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    location = created.headers["location"]
+
+    create_form = await client.get("/applications/new")
+    assert 'name="is_recruiter"' in create_form.text
+    assert "Agency" in create_form.text
+    assert "Recruiter" not in create_form.text
+
+    dashboard = await client.get("/")
+    assert '<abbr title="Agency flag">Agency</abbr>' in dashboard.text
+    assert "Recruiter" not in dashboard.text
+    assert ">Yes</td>" in dashboard.text
+
+    detail = await client.get(location)
+    assert "<dt>Agency</dt><dd>Yes</dd>" in detail.text
+    assert "Recruiter" not in detail.text
+    assert 'name="is_recruiter"' in detail.text
+    assert "checked" in detail.text
 
 
 async def test_dashboard_stage_editor_updates_row(

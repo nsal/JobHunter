@@ -8,22 +8,36 @@
   <button class="search-action" type="submit">Search</button>
   {% if q %}<a class="button search-action" href="/">Clear</a>{% endif %}
 </form>
-<div class="table-wrap">
+<div class="table-wrap applications-table-wrap">
   <table class="applications-table">
+    <colgroup>
+      <col class="application-role-column">
+      <col class="application-company-column">
+      <col class="application-payment-column">
+      <col class="application-job-column">
+      <col class="application-cv-column">
+      <col class="application-agency-column">
+      <col class="application-remote-column">
+      <col class="application-stage-column">
+      <col class="application-stage-note-column">
+      <col class="application-notes-column">
+      <col class="application-submitted-column">
+      <col class="application-updated-column">
+    </colgroup>
     <thead class="applications-table-header">
       <tr>
         <th>Role</th>
         <th>Company</th>
-        <th>Payment</th>
-        <th>Job URL</th>
+        <th><abbr title="Payment">Pay</abbr></th>
+        <th><abbr title="Job post">Post</abbr></th>
         <th>CV</th>
-        <th>Recruiter</th>
-        <th>Fully remote</th>
-        <th>Current stage</th>
-        <th>Stage note</th>
+        <th><abbr title="Agency flag">Agency</abbr></th>
+        <th><abbr title="Fully remote">Remote</abbr></th>
+        <th><abbr title="Current stage">Stage</abbr></th>
+        <th><abbr title="Current stage note">Stage note</abbr></th>
         <th>Notes</th>
         <th>Submitted</th>
-        <th>Last updated</th>
+        <th><abbr title="Last updated">Updated</abbr></th>
       </tr>
     </thead>
   <tbody id="applications">{% for application in applications %}{% include 'applications/_application_row.html' %}{% else %}<tr><td colspan="12">{% if q %}No applications match “{{ q }}”.{% else %}No applications yet.{% endif %}</td></tr>{% endfor %}</tbody>

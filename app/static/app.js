@@ -31,6 +31,17 @@ document.body.addEventListener("close-notes-editor", () => {
   closeDialog("notes-editor-dialog");
 });
 
+document.addEventListener("change", (event) => {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement) || input.dataset.cvUpload === undefined) {
+    return;
+  }
+  const status = input.closest(".cv-control")?.querySelector("[data-cv-status]");
+  if (status) {
+    status.textContent = input.files?.[0]?.name || "No file selected";
+  }
+});
+
 document.addEventListener("click", (event) => {
   const target = event.target.closest("button");
   if (!target) {

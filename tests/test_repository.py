@@ -33,6 +33,15 @@ def test_stage_transition_is_sequenced_and_validated(
     application_id = repository.create_application(
         {"role": "Developer", "company": "Acme"}, "2026-01-01T09:00:00"
     )
+    initial_history = repository.get_application(application_id)["history"]
+    with pytest.raises(ValueError, match="Choose a new stage"):
+        repository.add_stage(application_id, "", "2026-01-02T09:00:00")
+    with pytest.raises(ValueError, match="Submitted is created"):
+        repository.add_stage(application_id, "Submitted", "2026-01-02T09:00:00")
+    rejected = repository.get_application(application_id)
+    assert rejected["current_stage"] == "Submitted"
+    assert rejected["history"] == initial_history
+
     repository.add_stage(
         application_id, "Interview", "2026-01-02T09:00:00", "First round"
     )

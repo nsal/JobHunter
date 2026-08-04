@@ -339,7 +339,11 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
             return templates.TemplateResponse(
                 request,
                 "applications/_stage_history.html",
-                {"application": application, "now": now_value()},
+                {
+                    "application": application,
+                    "now": now_value(),
+                    "stages": STAGES,
+                },
             )
         except ApplicationNotFoundError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
@@ -359,6 +363,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
                     "application": application,
                     "error": str(error),
                     "now": now_value(),
+                    "stages": STAGES,
                     "stage_values": {
                         "stage": stage,
                         "effective_from": effective_from,

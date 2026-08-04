@@ -7,7 +7,16 @@
         hx-post="/applications/{{ application.id }}/stages"
         hx-target="#stage-panel" hx-swap="outerHTML">
     <label>New stage
-      <select name="stage">{% for stage in ('Submitted', 'Viewed', 'Call', 'Interview', 'Offer', 'Reject', 'Decline', 'Closed') %}<option value="{{ stage }}" {% if stage_values and stage_values.stage == stage %}selected{% endif %}>{{ stage }}</option>{% endfor %}</select>
+      <select name="stage" required>
+        <option value="" disabled {% if not stage_values or not stage_values.stage %}selected{% endif %}>
+          Select a new stage
+        </option>
+        {% for stage in stages if stage != 'Submitted' %}
+          <option value="{{ stage }}" {% if stage_values and stage_values.stage == stage %}selected{% endif %}>
+            {{ stage }}
+          </option>
+        {% endfor %}
+      </select>
     </label>
     <label>Effective from <input type="datetime-local" name="effective_from" value="{{ stage_values.effective_from if stage_values else now }}" required></label>
     <label>Description <input name="stage_description" value="{{ stage_values.stage_description if stage_values else '' }}"></label>

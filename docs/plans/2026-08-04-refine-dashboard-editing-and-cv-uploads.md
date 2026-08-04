@@ -16,6 +16,19 @@
   typography, make all application-table text consistent, keep table headers
   centred and on one line where the viewport permits, open job-post links in a
   new tab, and compact the stage-history display to match its update form.
+- Make the main application table fit within the dashboard's normal page
+  margins without a horizontal scrollbar: use concise headers, a smaller
+  readable table scale, and one-line truncation for long cell values.
+- Rename the user-facing Recruiter flag to Agency without changing the stored
+  `is_recruiter` field or existing application data. Refine the New application
+  upload control by reducing its guidance/status text and removing its
+  redundant Close action while retaining Cancel and the native file chooser.
+- Correct the responsive table and file-picker accessibility regressions: full
+  dates must remain visible at narrow widths, and keyboard users must receive a
+  visible, operable file-selection focus target.
+- Prevent accidental and direct-request insertion of a second Submitted history
+  record by requiring an explicit non-placeholder New stage selection and
+  rejecting Submitted through the stage-addition domain operation.
 
 ## Context (from discovery)
 
@@ -74,6 +87,15 @@
   shared classes used by dashboard table cells, headers, and stage history.
   Add focused CSS assertions or snapshots, consistent with existing tests, for
   the shared button typography and compact stage-history presentation.
+- Add route/template and stylesheet assertions for compact dashboard columns,
+  one-line truncation hooks, concise accessible headers, Agency labels, the
+  New application file-status text, and the absence of the New-form Close
+  action. No browser E2E suite is configured, so manually verify desktop and
+  narrow-screen table behavior after implementation.
+- Add repository and route tests for placeholder-stage rejection and a direct
+  attempt to append Submitted after application creation. Add responsive CSS
+  assertions for full date visibility and a keyboard-focused upload-control
+  test or browser-level check when an E2E harness becomes available.
 - Exercise repository tests for current-stage replacement versus note-only
   edits, ordering, invalid stages, missing applications, and notes clearing.
 - After each task run `uv run pytest`, `uv run ruff check .`,
@@ -142,6 +164,32 @@ the dashboard untouched.
 - Apply those external-link attributes consistently to both dashboard and
   detail-page job-post renderings; a route test must prevent the two templates
   from drifting apart again.
+- Scope dashboard density rules to `.applications-table`: remove its broad
+  minimum width, use fixed column allocation, concise header labels with
+  explanatory titles, and ellipsis/no-wrap overflow treatment for body values.
+  This preserves a single readable row per application at normal desktop page
+  widths without changing stored field values or the table's column count.
+- Keep the native file input as the source of the upload. Wrap it in an
+  accessible label-triggered control with a separate, JavaScript-updated
+  status element so both the initial “No file selected” status and the format
+  guidance can be reduced to roughly 60–70% of normal form text; do not
+  reintroduce a path picker or expose a client filesystem path.
+- Treat “Agency” as a presentation-only name for `is_recruiter`: update create,
+  edit, dashboard, and detail labels while preserving request names,
+  repository mappings, and database columns for compatibility.
+- At the dashboard mobile breakpoint, replace the constrained table-row layout
+  with a labelled stacked presentation rather than clipping cells or restoring
+  a horizontal scrollbar. Keep full `YYYY-MM-DD` dates, all edit controls, and
+  all application fields reachable in that presentation.
+- Make the native file input fill the visible Choose CV control with transparent
+  styling rather than visually hiding the focus target. Use a focus-within
+  outline on the control, preserve label association/status updates, and test
+  keyboard activation manually until browser E2E coverage exists.
+- In `Repository.add_stage`, reject an empty/placeholder stage and Submitted,
+  because creation already owns the immutable initial Submitted record. The
+  stage-history select will begin on a disabled placeholder and omit Submitted;
+  route-level validation must return the existing error fragment without
+  changing history for forged values.
 
 ## What Goes Where
 
@@ -364,7 +412,175 @@ the dashboard untouched.
 - [x] Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`,
   and `uv run mypy app` — all must pass before Task 9.
 
-### Task 9: Update documentation and close the plan
+### Task 9: ➕ Fit the applications table within dashboard margins
+
+**Files:**
+- Modify: `app/templates/applications/index.html`
+- Modify: `app/templates/applications/_application_row.html`
+- Modify: `app/static/app.css`
+- Modify: `tests/test_routes.py`
+
+- [x] Replace verbose dashboard headers with concise one-line labels and
+  accessible explanatory titles, keeping all twelve application columns.
+- [x] Define an applications-table-specific fixed column layout that removes
+  its `60rem` minimum width and fits the normal dashboard content area without
+  a horizontal scrollbar or over-wide page margins.
+- [x] Reduce dashboard table text and cell padding to a readable compact scale;
+  apply no-wrap and ellipsis handling to long body values so one application
+  remains one visual row while preserving the full values in accessible titles
+  or existing detail navigation.
+- [x] Retain responsive usability: table controls must remain operable, date
+  values must stay intact, and narrow viewports must not cause page-level
+  horizontal overflow.
+- [x] Write route/template tests for concise accessible headings and row
+  truncation hooks, plus stylesheet assertions for the scoped fixed layout and
+  compact table metrics.
+- [x] Write edge-case tests for long Role, Company, Stage note, and Notes
+  values, proving their rendered row remains a single-line table row and their
+  full data remains reachable.
+- [x] Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`,
+  and `uv run mypy app` — all must pass before Task 10.
+
+### Task 10: ➕ Rename the Recruiter UI flag to Agency
+
+**Files:**
+- Modify: `app/templates/applications/_application_form.html`
+- Modify: `app/templates/applications/_application_edit_form.html`
+- Modify: `app/templates/applications/index.html`
+- Modify: `app/templates/applications/detail.html`
+- Modify: `tests/test_routes.py`
+
+- [x] Replace every user-facing Recruiter label and dashboard heading with
+  Agency in create, edit, list, and detail renderings.
+- [x] Preserve the existing `is_recruiter` checkbox name, request parsing,
+  repository mapping, database column, and stored values; no migration or API
+  contract change is part of this task.
+- [x] Write route/template tests for Agency labels across all application views
+  and for preselected Agency checkboxes on existing applications.
+- [x] Write compatibility tests proving form submission using `is_recruiter`
+  still persists and renders the Agency state correctly.
+- [x] Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`,
+  and `uv run mypy app` — all must pass before Task 11.
+
+### Task 11: ➕ Refine New application upload text and actions
+
+**Files:**
+- Modify: `app/templates/applications/_application_form.html`
+- Modify: `app/static/app.css`
+- Modify: `app/static/app.js`
+- Modify: `tests/test_routes.py`
+
+- [x] Remove only the Close button from the New application dialog header;
+  retain its Escape behavior and the non-submitting Cancel action in the form
+  footer.
+- [x] Keep the native multipart file input and operating-system chooser, but
+  expose a label-triggered visual control with a separate initial “No file
+  selected” status that updates to the selected filename without showing a
+  filesystem path.
+- [x] Render the `PDF, DOC, or DOCX up to 10 MiB` guidance and file-status text
+  at approximately 60–70% of normal form text, with readable contrast and
+  sufficient spacing from the file-selection control.
+- [x] Keep validation rerenders and selected-file feedback accessible through
+  correct label association and a status/live-region pattern; do not change
+  upload size/type validation or edit-form behavior.
+- [x] Write route/template tests for the removed Close control, retained
+  Cancel control, native upload markup, guidance, and initial status element.
+- [x] Write client-behavior tests or focused JavaScript assertions for status
+  replacement after a file is chosen and clearing/resetting after form rerender.
+- [x] Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`,
+  and `uv run mypy app` — all must pass before Task 12.
+
+### Task 12: ➕ Preserve dashboard dates and controls on narrow screens
+
+**Files:**
+- Modify: `app/templates/applications/index.html`
+- Modify: `app/templates/applications/_application_row.html`
+- Modify: `app/static/app.css`
+- Modify: `tests/test_routes.py`
+
+- [x] Add responsive cell labels or equivalent semantic hooks to every
+  dashboard field so rows can switch from the compact desktop table to a
+  labelled stacked presentation at a documented narrow-screen breakpoint.
+- [x] Replace the dashboard-only `overflow-x: hidden` behavior with responsive
+  styling that keeps all fields, edit controls, and complete `YYYY-MM-DD`
+  Submitted/Updated dates visible rather than clipping them.
+- [x] Preserve the compact fixed desktop table, concise headers, ellipsis
+  behavior, and stage-history table behavior outside the mobile breakpoint.
+- [x] Write route/template tests for the responsive field-label hooks and CSS
+  assertions that date cells override truncation in the stacked layout.
+- [x] Add focused long-content tests that cover both date fields and dashboard
+  editor controls, proving the responsive markup retains their full values.
+- [x] Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`,
+  and `uv run mypy app` — all must pass before Task 13.
+
+### Task 13: ➕ Restore keyboard-operable New application file selection
+
+**Files:**
+- Modify: `app/templates/applications/_application_form.html`
+- Modify: `app/static/app.css`
+- Modify: `app/static/app.js`
+- Modify: `tests/test_routes.py`
+
+- [x] Make the actual New-application file input a transparent, focusable
+  overlay within the visible Choose CV control, instead of a visually hidden
+  standalone input.
+- [x] Add a clear `:focus-within` focus indicator to the visible control and
+  retain pointer, keyboard, screen-reader, native-chooser, and live-status
+  behavior without exposing a local filesystem path.
+- [x] Preserve the smaller status/guidance text, initial No file selected
+  message, upload validation, and Cancel/Escape dialog behavior.
+- [x] Write route/template and stylesheet assertions for the focusable input,
+  focus-within control, and accessible status association.
+- [x] Add a manual keyboard acceptance scenario (Tab, visible focus, Space or
+  Enter, native chooser, selected filename) to Post-Completion; add browser
+  E2E coverage if the project later adopts a browser test harness.
+- [x] Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`,
+  and `uv run mypy app` — all must pass before Task 14.
+
+### Task 14: ➕ Prevent duplicate Submitted stage history
+
+**Files:**
+- Modify: `app/repository.py`
+- Modify: `app/main.py`
+- Modify: `app/templates/applications/_stage_history.html`
+- Modify: `tests/test_repository.py`
+- Modify: `tests/test_routes.py`
+
+- [x] Render New stage with a disabled, selected placeholder and omit Submitted
+  from its append-only stage choices; preserve the separate current-stage
+  editor's existing behavior.
+- [x] Reject blank/placeholder stage values and a Submitted stage in
+  `Repository.add_stage`, with a precise validation message and no history
+  mutation; retain valid transitions and ordering checks.
+- [x] Ensure the route rerenders the history fragment with the placeholder and
+  submitted errors for HTMX and direct requests without closing the current
+  history record.
+- [x] Write repository tests for blank, placeholder, and Submitted rejection,
+  including history-count/current-stage invariants and a valid non-Submitted
+  transition.
+- [x] Write route/template tests for the initially selected disabled placeholder,
+  omitted Submitted option, forged Submitted/blank submissions, validation
+  feedback, and successful valid additions.
+- [x] Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`,
+  and `uv run mypy app` — all must pass before Task 15.
+
+### Task 15: Verify dashboard and stage-history acceptance criteria
+
+**Files:**
+- Modify: `tests/test_routes.py` (only if verification identifies a gap)
+- Modify: `tests/test_repository.py` (only if verification identifies a gap)
+- Modify: `app/static/app.css` (only if verification identifies a layout defect)
+
+- [ ] Verify all dashboard desktop and narrow-screen criteria, Agency labels,
+  safe job links, and New application upload/focus behavior together.
+- [ ] Verify stage history cannot accept blank, placeholder, or duplicate
+  Submitted additions while valid transitions still append correctly.
+- [x] Run the full test suite: `uv run pytest`.
+- [x] Run static checks: `uv run ruff check .`, `uv run ruff format --check .`,
+  and `uv run mypy app`.
+- [ ] Verify test coverage meets the project standard before Task 16.
+
+### Task 16: Update documentation and close the plan
 
 **Files:**
 - Modify: `README.md` (if user-facing CV storage or supported formats need
@@ -394,5 +610,24 @@ the dashboard untouched.
 - Verify every button uses the same typeface and size, job-post links open in
   a new tab, table body text is visually consistent, and stage history is as
   compact as the stage-update form.
+- At normal desktop width, verify the applications table stays within the page
+  margins with no horizontal scrollbar, each application occupies one visual
+  row, concise headers remain understandable, and long values can still be
+  accessed through their detail view or explanatory title.
+- Verify Agency appears in every user-facing application view while existing
+  Agency selections remain saved after create and edit submissions.
+- Open the New application dialog and verify it has no Close button, retains
+  Cancel and Escape handling, opens the system file chooser, and displays the
+  smaller format guidance and no-file/selected-file status legibly.
+- At a narrow viewport, verify each dashboard application uses the responsive
+  labelled layout, all edit controls remain reachable, and Submitted/Updated
+  dates show their full `YYYY-MM-DD` values without a clipped column or
+  horizontal scrollbar.
+- Navigate to Choose CV with the keyboard, confirm a visible focus indicator,
+  activate the native chooser with the keyboard, and confirm the selected
+  filename replaces the initial status without showing its local path.
+- In Stage history, confirm New stage starts at its placeholder, Submitted is
+  unavailable, blank/forged Submitted submissions show validation feedback,
+  and a valid transition appends exactly one new history record.
 - Preview a PDF from the dashboard, download a DOC/DOCX, and verify a missing
   file fails without revealing an internal path.

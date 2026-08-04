@@ -1,19 +1,62 @@
 <tr id="application-{{ application.id }}">
-  <td><a href="/applications/{{ application.id }}">{{ application.role }}</a></td>
-  <td>{{ application.company }}</td>
-  <td>{{ application.payment or '—' }}</td>
-  <td>
+  <td data-label="Role" title="{{ application.role }}">
+    <a href="/applications/{{ application.id }}">{{ application.role }}</a>
+  </td>
+  <td data-label="Company" title="{{ application.company }}">
+    {{ application.company }}
+  </td>
+  <td data-label="Payment" title="{{ application.payment or 'Not supplied' }}">
+    {{ application.payment or '—' }}
+  </td>
+  <td data-label="Job post">
     {% if application.job_url %}
       <a href="{{ application.job_url }}" target="_blank"
          rel="noopener noreferrer">Job post</a>
     {% else %}—{% endif %}
   </td>
-  <td>{% if application.cv_path %}{% if (application.cv_path|lower).endswith('.pdf') %}<button type="button" data-preview-url="/applications/{{ application.id }}/cv/preview">Preview CV</button>{% else %}<a href="/applications/{{ application.id }}/cv/download">Download CV</a>{% endif %}{% else %}—{% endif %}</td>
-  <td>{{ 'Yes' if application.is_recruiter else 'No' }}</td>
-  <td>{{ 'Yes' if application.is_fully_remote else 'No' }}</td>
-  <td><button class="table-edit" type="button" data-open-stage-editor data-stage-editor-url="/applications/{{ application.id }}/stage-editor">{{ application.current_stage }}</button></td>
-  <td><button class="table-edit" type="button" data-open-stage-editor data-stage-editor-url="/applications/{{ application.id }}/stage-editor">{{ application.current_stage_description or '—' }}</button></td>
-  <td><button class="table-edit" type="button" data-open-notes-editor data-notes-editor-url="/applications/{{ application.id }}/notes-editor">{{ application.notes|preview_text }}</button></td>
-  <td class="date-cell"><time datetime="{{ application.submitted_date }}">{{ application.submitted_date|date_only }}</time></td>
-  <td class="date-cell"><time datetime="{{ application.last_updated_date }}">{{ application.last_updated_date|date_only }}</time></td>
+  <td data-label="CV">
+    {% if application.cv_path %}
+      {% if (application.cv_path|lower).endswith('.pdf') %}
+        <button type="button"
+                data-preview-url="/applications/{{ application.id }}/cv/preview">
+          Preview CV
+        </button>
+      {% else %}
+        <a href="/applications/{{ application.id }}/cv/download">Download CV</a>
+      {% endif %}
+    {% else %}—{% endif %}
+  </td>
+  <td data-label="Agency">{{ 'Yes' if application.is_recruiter else 'No' }}</td>
+  <td data-label="Fully remote">
+    {{ 'Yes' if application.is_fully_remote else 'No' }}
+  </td>
+  <td data-label="Current stage" title="{{ application.current_stage }}">
+    <button class="table-edit" type="button" data-open-stage-editor
+            data-stage-editor-url="/applications/{{ application.id }}/stage-editor">
+      {{ application.current_stage }}
+    </button>
+  </td>
+  <td data-label="Stage note"
+      title="{{ application.current_stage_description or 'Not supplied' }}">
+    <button class="table-edit" type="button" data-open-stage-editor
+            data-stage-editor-url="/applications/{{ application.id }}/stage-editor">
+      {{ application.current_stage_description or '—' }}
+    </button>
+  </td>
+  <td data-label="Notes" title="{{ application.notes or 'Not supplied' }}">
+    <button class="table-edit" type="button" data-open-notes-editor
+            data-notes-editor-url="/applications/{{ application.id }}/notes-editor">
+      {{ application.notes|preview_text }}
+    </button>
+  </td>
+  <td class="date-cell" data-label="Submitted">
+    <time datetime="{{ application.submitted_date }}">
+      {{ application.submitted_date|date_only }}
+    </time>
+  </td>
+  <td class="date-cell" data-label="Updated">
+    <time datetime="{{ application.last_updated_date }}">
+      {{ application.last_updated_date|date_only }}
+    </time>
+  </td>
 </tr>

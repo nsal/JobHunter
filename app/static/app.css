@@ -27,6 +27,26 @@ textarea { min-height: 5rem; }
 .checkbox-label input { width: auto; }
 .cv-control { display: grid; align-content: start; gap: .25rem; font-weight: 600; }
 .cv-control [data-cv-name], .path-summary { font-weight: 400; overflow-wrap: anywhere; }
+.file-picker-button {
+  justify-self: start;
+  position: relative;
+}
+.file-picker-input {
+  cursor: pointer;
+  inset: 0;
+  opacity: 0;
+  padding: 0;
+  position: absolute;
+}
+.file-picker-button:focus-within {
+  outline: 3px solid #f5b700;
+  outline-offset: 2px;
+}
+.file-upload-status, .file-upload-guidance {
+  color: #52606d;
+  font-size: .65rem;
+  font-weight: 400;
+}
 .form-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 dialog { border: 0; border-radius: .5rem; box-shadow: 0 1rem 3rem #0008; max-width: min(44rem, calc(100vw - 2rem)); width: 100%; }
 dialog::backdrop { background: #0008; }
@@ -36,6 +56,7 @@ dialog::backdrop { background: #0008; }
 .picker-files { list-style: none; }
 @media (max-width: 40rem) { .form-grid { grid-template-columns: 1fr; } .wide-field { grid-column: auto; } }
 .table-wrap { overflow-x: auto; }
+.applications-table-wrap { overflow-x: hidden; }
 .search-form { align-items: end; display: flex; flex-wrap: wrap; max-width: none; }
 .search-form label { flex-basis: 100%; }
 .search-form input { flex: 1 1 20rem; }
@@ -45,14 +66,79 @@ th, td { border-bottom: 1px solid #b8c2cc; padding: .55rem; text-align: left; ve
 th { background: #eaf1f8; color: #17212b; }
 .applications-table th, .applications-table td {
   font-family: system-ui, sans-serif;
-  font-size: 1rem;
+  font-size: .8125rem;
+  padding: .4rem;
 }
+.applications-table { min-width: 0; table-layout: fixed; }
+.applications-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.applications-table td > a, .applications-table td > button {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.applications-table .application-role-column { width: 10%; }
+.applications-table .application-company-column { width: 10%; }
+.applications-table .application-payment-column { width: 6%; }
+.applications-table .application-job-column { width: 5.5%; }
+.applications-table .application-cv-column { width: 6%; }
+.applications-table .application-agency-column { width: 5.5%; }
+.applications-table .application-remote-column { width: 6%; }
+.applications-table .application-stage-column { width: 7.5%; }
+.applications-table .application-stage-note-column { width: 10%; }
+.applications-table .application-notes-column { width: 10%; }
+.applications-table .application-submitted-column { width: 12%; }
+.applications-table .application-updated-column { width: 12%; }
 .applications-table-header th {
   text-align: center;
   vertical-align: middle;
   white-space: nowrap;
 }
 .date-cell { min-width: 6.5rem; white-space: nowrap; }
+@media (max-width: 40rem) {
+  .applications-table-wrap { overflow: visible; }
+  .applications-table, .applications-table tbody, .applications-table tr,
+  .applications-table td { display: block; width: 100%; }
+  .applications-table colgroup, .applications-table-header { display: none; }
+  .applications-table { table-layout: auto; }
+  .applications-table tbody { display: grid; gap: .8rem; }
+  .applications-table tr {
+    border: 1px solid #b8c2cc;
+    border-radius: .25rem;
+    overflow: hidden;
+  }
+  .applications-table td {
+    align-items: start;
+    border-bottom: 1px solid #b8c2cc;
+    display: grid;
+    gap: .5rem;
+    grid-template-columns: minmax(7rem, 38%) 1fr;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+  .applications-table td::before {
+    color: #17212b;
+    content: attr(data-label);
+    font-weight: 700;
+  }
+  .applications-table td[colspan] { display: block; }
+  .applications-table td[colspan]::before { content: none; }
+  .applications-table td > a, .applications-table td > button {
+    display: inline-block;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+  .applications-table .date-cell {
+    min-width: 0;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+}
 .table-edit { background: none; color: inherit; padding: 0; text-align: left; text-decoration: underline; }
 .stage-history { max-width: 48rem; }
 .stage-history-form { max-width: 48rem; }

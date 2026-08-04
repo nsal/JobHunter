@@ -232,6 +232,10 @@ class Repository:
         description: str | None = None,
     ) -> None:
         """Close the current stage and append a new current stage atomically."""
+        if not stage:
+            raise ValueError("Choose a new stage.")
+        if stage == "Submitted":
+            raise ValueError("Submitted is created with the application.")
         if stage not in STAGES:
             raise ValueError("Choose a valid stage.")
         if not effective_from:
