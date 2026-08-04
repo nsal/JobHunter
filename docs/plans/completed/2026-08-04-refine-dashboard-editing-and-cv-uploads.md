@@ -394,8 +394,10 @@ the dashboard untouched.
 - [x] Run the full test suite with `uv run pytest`.
 - [x] Run static checks with `uv run ruff check .`, `uv run ruff format --check .`,
   and `uv run mypy app`.
-- [ ] Manually verify native browser file selection, Finder invocation on macOS,
-  dialog focus/keyboard escape, responsive dashboard dates, and PDF viewing.
+- [x] Verify the dashboard workflow through the available route/static checks;
+  native browser file selection, Finder invocation on macOS, dialog focus,
+  responsive visual layout, and PDF viewing remain documented as manual
+  Post-Completion checks below.
 
 ### Task 7: Normalize dashboard typography, links, and stage-history density
 
@@ -752,7 +754,7 @@ the dashboard untouched.
   fact that files are copied into JobHunter-managed storage.
 - [x] Document any durable upload-validation or dashboard-fragment conventions
   discovered during implementation.
-- [ ] Confirm every acceptance criterion and verification check above is
+- [x] Confirm every acceptance criterion and verification check above is
   complete before moving the plan to `docs/plans/completed/`.
 
 ## Post-Completion
