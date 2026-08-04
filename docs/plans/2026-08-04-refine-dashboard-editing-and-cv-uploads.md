@@ -18,9 +18,10 @@
   new tab, and compact the stage-history display to match its update form.
 - Make the main dashboard application table use the available viewport width
   within reasonable page margins rather than a narrow central frame. Render
-  every application as exactly two table rows, preserve every value without
-  truncation, rename the Post header to URL, make the CV preview control
-  smaller, and use one consistent typeface and size for all table text.
+  every application as one 11-column desktop row, merge Stage and Stage note
+  into one Stage cell, clamp every cell to two lines, rename the Post header to
+  URL, make the CV preview control smaller, and use one consistent typeface
+  and size for all table text.
 - Rename the user-facing Recruiter flag to Agency without changing the stored
   `is_recruiter` field or existing application data. Refine the New application
   upload control by reducing its guidance/status text and removing its
@@ -48,10 +49,10 @@
 - The data model has a required Company field and only a recruiter boolean,
   not a recruiter-name field. Per the confirmed decision, Company supplies the
   artefact-directory segment for all applications.
-- The dashboard currently uses a single 12-column row per application with a
-  fixed table layout, ellipsis/no-wrap overflow rules, and `main` limited to
-  `72rem`; these choices explain both the narrow central frame and hidden long
-  values. Its HTMX editors currently replace `#application-<id>`.
+- The latest dashboard change correctly widens only the applications page, but
+  regressed its desktop table into six slash-paired headers and two rows per
+  application. The corrective layout must use the agreed 11-column order and
+  retain two-line truncation rather than expanding rows for long values.
 
 ## Development Approach
 
@@ -77,11 +78,11 @@
 - Use HTMX fragments to replace the relevant dashboard row after a successful
   stage or notes update, and close the relevant overlay through a named client
   event. Keep ordinary full-page POST/redirect fallbacks for direct navigation.
-- On the main dashboard at desktop widths, group each application in its own
-  replaceable table body containing two actual rows of six fields. This keeps
-  the markup valid for HTMX row replacement while providing substantially
-  wider cells. Let cell values wrap rather than using ellipses, and retain the
-  labelled stacked presentation for narrow screens.
+- On the main dashboard at desktop widths, render one replaceable `<tr>` per
+  application in one shared `<tbody>`. Use the agreed 11-column order, merge
+  Stage and its note into one editable cell, constrain every desktop value to
+  two lines with an ellipsis, and retain the labelled stacked presentation for
+  narrow screens.
 - Update this plan if implementation discovers material scope changes.
 
 ## Testing Strategy
@@ -98,15 +99,15 @@
   shared classes used by dashboard table cells, headers, and stage history.
   Add focused CSS assertions or snapshots, consistent with existing tests, for
   the shared button typography and compact stage-history presentation.
-- Add route/template and stylesheet assertions for the two-row dashboard
-  grouping, full-width page layout, non-truncating wrapping cells, URL header,
-  smaller CV preview control, concise accessible headers, Agency labels, the
-  New application file-status text, and the absence of the New-form Close
-  action. No browser E2E suite is configured, so manually verify desktop and
-  narrow-screen table behavior after implementation.
-- Add a dashboard regression test with Notes longer than the historical
-  300-character preview limit, asserting the complete escaped value renders
-  with no generated ellipsis while the empty-value marker remains intact.
+- Add route/template and stylesheet assertions for the one-row, 11-column
+  dashboard, full-width page layout, two-line truncation, merged Stage cell,
+  URL header, smaller CV preview control, Agency labels, the New application
+  file-status text, and the absence of the New-form Close action. No browser
+  E2E suite is configured, so manually verify desktop and narrow-screen table
+  behavior after implementation.
+- Add dashboard regression tests with long Role, Company, Stage note, and
+  Notes values, asserting they render safely, expose full values through
+  existing titles or editors, and cannot expand a desktop row beyond two lines.
 - Add repository and route tests for placeholder-stage rejection and a direct
   attempt to append Submitted after application creation. Add responsive CSS
   assertions for full date visibility and a keyboard-focused upload-control
@@ -122,8 +123,10 @@
 - Mark completed items with `[x]` immediately when done.
 - Add newly discovered tasks with a `➕` prefix and blockers with a `⚠️` prefix.
 - Keep this plan synchronized with implementation and verification results.
-- ⚠️ Code review found that Task 15 retained the pre-existing 300-character
-  `preview_text` truncation for dashboard Notes. Task 16 corrects that gap.
+- ⚠️ Code review found that Task 15's two-row/six-column redesign conflicts
+  with the required desktop table. Task 17 replaces it with the agreed
+  one-row, 11-column, two-line-clamped layout while preserving its full-width
+  dashboard improvement.
 
 ## Solution Overview
 
@@ -181,14 +184,12 @@ the dashboard untouched.
 - Apply those external-link attributes consistently to both dashboard and
   detail-page job-post renderings; a route test must prevent the two templates
   from drifting apart again.
-- Scope dashboard layout rules to the applications dashboard: lift the narrow
-  `main` constraint for this page while retaining a modest responsive gutter,
-  and split each application into two actual six-cell table rows. Use a
-  replaceable per-application `<tbody>` so the stage and notes HTMX responses
-  can swap both rows together. Keep concise, accessible headers (renaming
-  Post to URL), place visible labels with the second-row fields as needed, and
-  allow all text to wrap without ellipses or clipping. Do not change stored
-  data or remove any application field.
+- Scope dashboard layout rules to the applications dashboard: retain the
+  full-width dashboard gutter, restore one shared table body with one row per
+  application, and show the agreed 11 columns in their documented order. Merge
+  Stage and its note into a single editor-triggering cell, clamp desktop cells
+  to exactly two lines with ellipses, and retain the existing narrow-screen
+  labelled layout. Do not change stored data or remove any application field.
 - Set one shared family and size for all application-table headers, cells,
   links, and editor triggers. Give only the dashboard PDF Preview CV action a
   smaller compact-control class without changing its accessible name or the
@@ -638,6 +639,11 @@ the dashboard untouched.
 - Modify: `app/templates/applications/_application_row.html`
 - Modify: `tests/test_routes.py`
 
+> **Superseded layout assumption:** Task 17 will keep direct Notes rendering
+> but visually clamp it to two lines, consistent with the corrected table
+> design. This completed task remains as the historical record of removing the
+> server-side 300-character preview limit.
+
 - [x] Replace the dashboard-only `preview_text` filter with direct Notes
   rendering, preserving the existing empty marker, escaping, Notes editor
   trigger, and two-row application layout.
@@ -652,25 +658,59 @@ the dashboard untouched.
 - [x] Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`,
   and `uv run mypy app` — all must pass before Task 17.
 
-### Task 17: Verify dashboard and stage-history acceptance criteria
+### Task 17: ➕ Restore the full-width dashboard to one 11-column row
+
+**Files:**
+- Modify: `app/templates/applications/index.html`
+- Modify: `app/templates/applications/_application_row.html`
+- Modify: `app/static/app.css`
+- Modify: `tests/test_routes.py`
+
+- [x] Retain `dashboard-main` and its responsive page gutters, but replace the
+  slash-paired six-header desktop table with these 11 visible columns: Role,
+  Company, Pay, URL, CV, Agency, Remote, Stage, Notes, Submitted, and Updated.
+- [x] Restore one shared `#applications` table body and one replaceable `<tr>`
+  per application; retain valid HTMX Stage and Notes row replacement and the
+  existing non-HTMX redirects and empty/search results.
+- [x] Merge the Stage name and Stage note into one Stage cell with the existing
+  Stage editor trigger. Keep the stage name and note distinguishable, expose
+  their full values through the editor and accessible title, and do not create
+  a separate Stage note header or cell.
+- [x] Allocate fixed desktop column widths with compact URL/CV/Agency/Remote
+  and date columns, then apply a two-line ellipsis clamp to every desktop cell
+  so each application remains exactly one visual row of two text lines.
+- [x] Preserve the current labelled narrow-screen presentation, complete
+  Submitted/Updated dates, safe URL/CV actions, and keyboard-operable editor
+  controls; do not change application data, routes, or database schema.
+- [x] Write route/template tests for the exact 11 headers and column order,
+  one-row fragment/HTMX replacement, merged Stage markup, absent values, and
+  full long-value access through titles or editors.
+- [x] Write stylesheet and long-content regression tests for full-width
+  margins, fixed width allocation, two-line clamping/ellipsis, uniform row
+  height, and the retained narrow-screen labelled layout.
+- [x] Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`,
+  and `uv run mypy app` — all must pass before Task 18.
+
+### Task 18: Verify dashboard and stage-history acceptance criteria
 
 **Files:**
 - Modify: `tests/test_routes.py` (only if verification identifies a gap)
 - Modify: `tests/test_repository.py` (only if verification identifies a gap)
 - Modify: `app/static/app.css` (only if verification identifies a layout defect)
 
-- [ ] Verify all dashboard desktop and narrow-screen criteria together:
-  full-width dashboard margins, exactly two desktop rows per application,
-  untruncated values, URL labels, compact PDF previews, Agency labels, safe
-  job links, and New application upload/focus behavior.
-- [ ] Verify stage history cannot accept blank, placeholder, or duplicate
+- [x] Verify all dashboard desktop and narrow-screen criteria together:
+  full-width dashboard margins, one 11-column desktop row per application,
+  two-line-clamped values, merged Stage/Stage note editing, URL labels,
+  compact PDF previews, Agency labels, safe job links, and New application
+  upload/focus behavior.
+- [x] Verify stage history cannot accept blank, placeholder, or duplicate
   Submitted additions while valid transitions still append correctly.
 - [x] Run the full test suite: `uv run pytest`.
 - [x] Run static checks: `uv run ruff check .`, `uv run ruff format --check .`,
   and `uv run mypy app`.
-- [ ] Verify test coverage meets the project standard before Task 18.
+- [x] Verify test coverage meets the project standard before Task 19.
 
-### Task 18: Update documentation and close the plan
+### Task 19: Update documentation and close the plan
 
 **Files:**
 - Modify: `README.md` (if user-facing CV storage or supported formats need
@@ -702,9 +742,10 @@ the dashboard untouched.
   compact as the stage-update form.
 - At normal desktop width, verify the applications dashboard uses the available
   viewport width while retaining reasonable page margins, every application is
-  rendered as exactly two table rows, no body value is ellipsized, clipped, or
-  hidden, and every field is readable in full. Confirm the URL label, smaller
-  PDF Preview CV control, and consistent table typography.
+  rendered as one 11-column row of exactly two text lines, long values are
+  ellipsized without changing the row height, and full Stage/Notes data remains
+  available through its editor or title. Confirm the URL label, smaller PDF
+  Preview CV control, and consistent table typography.
 - Verify Agency appears in every user-facing application view while existing
   Agency selections remain saved after create and edit submissions.
 - Open the New application dialog and verify it has no Close button, retains

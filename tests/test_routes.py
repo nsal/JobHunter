@@ -378,17 +378,26 @@ async def test_dashboard_uses_consistent_table_markup_and_safe_job_links(
     assert 'class="applications-table"' in dashboard.text
     assert 'class="applications-table-header"' in dashboard.text
     assert 'class="table-wrap applications-table-wrap"' in dashboard.text
-    assert (
-        '<abbr title="Payment and current stage note">Pay / Stage note</abbr>'
-        in (dashboard.text)
+    headers = (
+        "Role",
+        "Company",
+        "Pay",
+        "URL",
+        "CV",
+        "Agency",
+        "Remote",
+        "Stage",
+        "Notes",
+        "Submitted",
+        "Updated",
     )
-    assert '<abbr title="Job post URL and notes">URL / Notes</abbr>' in (
-        dashboard.text
-    )
-    assert '<tbody id="application-1" class="application-group">' in (
-        dashboard.text
-    )
-    assert dashboard.text.count("<tr") == 3
+    assert dashboard.text.count('<col class="application-') == len(headers)
+    assert '<tbody id="applications">' in dashboard.text
+    assert '<tr id="application-1">' in dashboard.text
+    assert 'class="application-group"' not in dashboard.text
+    assert dashboard.text.count("<tr") == 2
+    for header in headers:
+        assert f">{header}<" in dashboard.text
     assert 'data-label="Submitted"' in dashboard.text
     assert 'data-label="Updated"' in dashboard.text
     assert 'href="https://jobs.example.test/engineer" target="_blank"' in (
@@ -513,10 +522,9 @@ def test_dashboard_styles_define_shared_typography_and_compact_history() -> (
     assert "main.dashboard-main" in stylesheet
     assert "max-width: none" in stylesheet
     assert "overflow-wrap: anywhere" in stylesheet
-    assert "text-overflow: ellipsis" not in stylesheet
-    assert ".applications-table .application-detail-row .table-field-label" in (
-        stylesheet
-    )
+    assert ".applications-table .table-cell-content" in stylesheet
+    assert "-webkit-line-clamp: 2" in stylesheet
+    assert "text-overflow: ellipsis" in stylesheet
     assert ".applications-table .cv-preview-button" in stylesheet
     assert ".applications-table td::before" in stylesheet
     assert "content: attr(data-label)" in stylesheet
@@ -536,7 +544,7 @@ def test_new_application_upload_status_uses_accessible_client_markup() -> None:
     assert '"No file selected"' in script
 
 
-async def test_dashboard_renders_long_application_values_without_truncation(
+async def test_dashboard_clamps_long_application_values_to_two_lines(
     client: httpx2.AsyncClient,
 ) -> None:
     role = "Principal Platform Engineer with a Very Long Title"
@@ -566,9 +574,10 @@ async def test_dashboard_renders_long_application_values_without_truncation(
     assert stage_note in dashboard.text
     assert notes in dashboard.text
     assert f"{notes[:300]}…" not in dashboard.text
-    assert dashboard.text.count("<tr") == 3
-    assert 'data-label="Current stage"' in dashboard.text
-    assert 'data-label="Stage note"' in dashboard.text
+    assert dashboard.text.count("<tr") == 2
+    assert 'data-label="Stage"' in dashboard.text
+    assert 'data-label="Stage note"' not in dashboard.text
+    assert f'title="Submitted — {stage_note}"' in dashboard.text
     assert 'data-label="Notes"' in dashboard.text
     assert 'data-label="Submitted"' in dashboard.text
     assert 'data-label="Updated"' in dashboard.text
@@ -591,12 +600,9 @@ async def test_agency_labels_preserve_the_existing_recruiter_field(
     assert "Recruiter" not in create_form.text
 
     dashboard = await client.get("/")
-    assert (
-        '<abbr title="Agency flag and last updated date">Agency / Updated</abbr>'
-        in dashboard.text
-    )
+    assert '<abbr title="Agency flag">Agency</abbr>' in dashboard.text
     assert "Recruiter" not in dashboard.text
-    assert ">Yes</td>" in dashboard.text
+    assert '<span class="table-cell-content">Yes</span>' in dashboard.text
 
     detail = await client.get(location)
     assert "<dt>Agency</dt><dd>Yes</dd>" in detail.text
@@ -626,7 +632,7 @@ async def test_dashboard_stage_editor_updates_row(
     )
     assert updated.status_code == 200
     assert 'id="application-1"' in updated.text
-    assert updated.text.count("<tr") == 2
+    assert updated.text.count("<tr") == 1
     assert "Interview" in updated.text
     assert updated.headers["HX-Trigger"] == "close-stage-editor"
 

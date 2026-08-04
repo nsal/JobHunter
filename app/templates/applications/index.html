@@ -18,22 +18,28 @@
       <col class="application-url-column">
       <col class="application-cv-column">
       <col class="application-agency-column">
+      <col class="application-remote-column">
+      <col class="application-stage-column">
+      <col class="application-notes-column">
+      <col class="application-submitted-column">
+      <col class="application-updated-column">
     </colgroup>
     <thead class="applications-table-header">
       <tr>
-        <th><abbr title="Role and fully remote">Role / Remote</abbr></th>
-        <th><abbr title="Company and current stage">Company / Stage</abbr></th>
-        <th><abbr title="Payment and current stage note">Pay / Stage note</abbr></th>
-        <th><abbr title="Job post URL and notes">URL / Notes</abbr></th>
-        <th><abbr title="CV and submitted date">CV / Submitted</abbr></th>
-        <th><abbr title="Agency flag and last updated date">Agency / Updated</abbr></th>
+        <th>Role</th>
+        <th>Company</th>
+        <th><abbr title="Payment">Pay</abbr></th>
+        <th><abbr title="Job post URL">URL</abbr></th>
+        <th>CV</th>
+        <th><abbr title="Agency flag">Agency</abbr></th>
+        <th><abbr title="Fully remote">Remote</abbr></th>
+        <th><abbr title="Current stage and stage note">Stage</abbr></th>
+        <th>Notes</th>
+        <th>Submitted</th>
+        <th><abbr title="Last updated">Updated</abbr></th>
       </tr>
     </thead>
-  {% for application in applications %}
-    {% include 'applications/_application_row.html' %}
-  {% else %}
-    <tbody id="applications"><tr><td colspan="6">{% if q %}No applications match “{{ q }}”.{% else %}No applications yet.{% endif %}</td></tr></tbody>
-  {% endfor %}
+    <tbody id="applications">{% for application in applications %}{% include 'applications/_application_row.html' %}{% else %}<tr><td colspan="11">{% if q %}No applications match “{{ q }}”.{% else %}No applications yet.{% endif %}</td></tr>{% endfor %}</tbody>
   </table>
 </div>
 {% endblock %}

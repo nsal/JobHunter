@@ -75,27 +75,37 @@ th { background: #eaf1f8; color: #17212b; }
   padding: .4rem;
 }
 .applications-table { min-width: 0; table-layout: fixed; }
-.applications-table td { overflow-wrap: anywhere; white-space: normal; }
-.applications-table td > a, .applications-table td > button {
-  font: inherit;
-  max-width: 100%;
+.applications-table td {
+  height: calc(2.6em + .8rem);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
-.applications-table .application-role-column,
-.applications-table .application-company-column,
-.applications-table .application-payment-column,
-.applications-table .application-url-column,
-.applications-table .application-cv-column,
-.applications-table .application-agency-column { width: 16.666%; }
+.applications-table .table-cell-content {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  display: -webkit-box;
+  font: inherit;
+  line-height: 1.3;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.applications-table .application-role-column { width: 13%; }
+.applications-table .application-company-column { width: 11%; }
+.applications-table .application-payment-column { width: 7%; }
+.applications-table .application-url-column { width: 5%; }
+.applications-table .application-cv-column { width: 6%; }
+.applications-table .application-agency-column { width: 5%; }
+.applications-table .application-remote-column { width: 6%; }
+.applications-table .application-stage-column { width: 15%; }
+.applications-table .application-notes-column { width: 17%; }
+.applications-table .application-submitted-column,
+.applications-table .application-updated-column { width: 7.5%; }
 .applications-table-header th {
   text-align: center;
   vertical-align: middle;
   white-space: nowrap;
-}
-.table-field-label { display: none; }
-.applications-table .application-detail-row .table-field-label {
-  display: block;
-  font-weight: 600;
-  margin-bottom: .2rem;
 }
 .applications-table .cv-preview-button { padding: .3rem .5rem; }
 .date-cell { min-width: 6.5rem; white-space: nowrap; }
@@ -106,7 +116,7 @@ th { background: #eaf1f8; color: #17212b; }
   .applications-table colgroup, .applications-table-header { display: none; }
   .applications-table { table-layout: auto; }
   .applications-table tbody { display: grid; gap: .8rem; }
-  .applications-table tbody.application-group {
+  .applications-table tbody tr {
     border: 1px solid #b8c2cc;
     border-radius: .25rem;
     overflow: hidden;
@@ -121,6 +131,7 @@ th { background: #eaf1f8; color: #17212b; }
     display: grid;
     gap: .5rem;
     grid-template-columns: minmax(7rem, 38%) 1fr;
+    height: auto;
     overflow: visible;
     text-overflow: clip;
     white-space: normal;
@@ -132,7 +143,7 @@ th { background: #eaf1f8; color: #17212b; }
   }
   .applications-table td[colspan] { display: block; }
   .applications-table td[colspan]::before { content: none; }
-  .applications-table td > a, .applications-table td > button {
+  .applications-table .table-cell-content {
     display: inline-block;
     max-width: none;
     overflow: visible;
@@ -144,9 +155,6 @@ th { background: #eaf1f8; color: #17212b; }
     overflow: visible;
     text-overflow: clip;
     white-space: nowrap;
-  }
-  .applications-table .application-detail-row .table-field-label {
-    display: none;
   }
 }
 .table-edit { background: none; color: inherit; padding: 0; text-align: left; text-decoration: underline; }

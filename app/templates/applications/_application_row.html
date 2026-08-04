@@ -1,73 +1,55 @@
-<tbody id="application-{{ application.id }}" class="application-group">
-  <tr>
+<tr id="application-{{ application.id }}">
   <td data-label="Role" title="{{ application.role }}">
-    <a href="/applications/{{ application.id }}">{{ application.role }}</a>
+    <a class="table-cell-content" href="/applications/{{ application.id }}">{{ application.role }}</a>
   </td>
   <td data-label="Company" title="{{ application.company }}">
-    {{ application.company }}
+    <span class="table-cell-content">{{ application.company }}</span>
   </td>
   <td data-label="Payment" title="{{ application.payment or 'Not supplied' }}">
-    {{ application.payment or '—' }}
+    <span class="table-cell-content">{{ application.payment or '—' }}</span>
   </td>
   <td data-label="URL">
     {% if application.job_url %}
-      <a href="{{ application.job_url }}" target="_blank"
+      <a class="table-cell-content" href="{{ application.job_url }}" target="_blank"
          rel="noopener noreferrer">URL</a>
-    {% else %}—{% endif %}
+    {% else %}<span class="table-cell-content">—</span>{% endif %}
   </td>
   <td data-label="CV">
     {% if application.cv_path %}
       {% if (application.cv_path|lower).endswith('.pdf') %}
-        <button type="button"
-                class="cv-preview-button"
-                data-preview-url="/applications/{{ application.id }}/cv/preview">
+        <span class="table-cell-content"><button type="button"
+              class="cv-preview-button"
+              data-preview-url="/applications/{{ application.id }}/cv/preview">
           Preview CV
-        </button>
+        </button></span>
       {% else %}
-        <a href="/applications/{{ application.id }}/cv/download">Download CV</a>
+        <a class="table-cell-content" href="/applications/{{ application.id }}/cv/download">Download CV</a>
       {% endif %}
-    {% else %}—{% endif %}
+    {% else %}<span class="table-cell-content">—</span>{% endif %}
   </td>
-  <td data-label="Agency">{{ 'Yes' if application.is_recruiter else 'No' }}</td>
-  </tr>
-  <tr class="application-detail-row">
-  <td data-label="Fully remote">
-    <span class="table-field-label">Remote</span>
-    {{ 'Yes' if application.is_fully_remote else 'No' }}
-  </td>
-  <td data-label="Current stage" title="{{ application.current_stage }}">
-    <span class="table-field-label">Stage</span>
-    <button class="table-edit" type="button" data-open-stage-editor
+  <td data-label="Agency"><span class="table-cell-content">{{ 'Yes' if application.is_recruiter else 'No' }}</span></td>
+  <td data-label="Fully remote"><span class="table-cell-content">{{ 'Yes' if application.is_fully_remote else 'No' }}</span></td>
+  <td data-label="Stage"
+      title="{{ application.current_stage }}{% if application.current_stage_description %} — {{ application.current_stage_description }}{% endif %}">
+    <button class="table-edit table-cell-content" type="button" data-open-stage-editor
             data-stage-editor-url="/applications/{{ application.id }}/stage-editor">
-      {{ application.current_stage }}
-    </button>
-  </td>
-  <td data-label="Stage note"
-      title="{{ application.current_stage_description or 'Not supplied' }}">
-    <span class="table-field-label">Stage note</span>
-    <button class="table-edit" type="button" data-open-stage-editor
-            data-stage-editor-url="/applications/{{ application.id }}/stage-editor">
-      {{ application.current_stage_description or '—' }}
+      {{ application.current_stage }}<br>{{ application.current_stage_description or '—' }}
     </button>
   </td>
   <td data-label="Notes" title="{{ application.notes or 'Not supplied' }}">
-    <span class="table-field-label">Notes</span>
-    <button class="table-edit" type="button" data-open-notes-editor
+    <button class="table-edit table-cell-content" type="button" data-open-notes-editor
             data-notes-editor-url="/applications/{{ application.id }}/notes-editor">
       {{ application.notes or '—' }}
     </button>
   </td>
   <td class="date-cell" data-label="Submitted">
-    <span class="table-field-label">Submitted</span>
-    <time datetime="{{ application.submitted_date }}">
+    <time class="table-cell-content" datetime="{{ application.submitted_date }}">
       {{ application.submitted_date|date_only }}
     </time>
   </td>
   <td class="date-cell" data-label="Updated">
-    <span class="table-field-label">Updated</span>
-    <time datetime="{{ application.last_updated_date }}">
+    <time class="table-cell-content" datetime="{{ application.last_updated_date }}">
       {{ application.last_updated_date|date_only }}
     </time>
   </td>
 </tr>
-</tbody>
