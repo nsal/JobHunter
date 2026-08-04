@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}Applications · JobHunter{% endblock %}
+{% block main_class %}dashboard-main{% endblock %}
 {% block content %}
 <div class="page-heading"><h1>Applications</h1><button type="button" data-open-application-dialog>New application</button></div>
 <form class="search-form" method="get" action="/">
@@ -14,33 +15,25 @@
       <col class="application-role-column">
       <col class="application-company-column">
       <col class="application-payment-column">
-      <col class="application-job-column">
+      <col class="application-url-column">
       <col class="application-cv-column">
       <col class="application-agency-column">
-      <col class="application-remote-column">
-      <col class="application-stage-column">
-      <col class="application-stage-note-column">
-      <col class="application-notes-column">
-      <col class="application-submitted-column">
-      <col class="application-updated-column">
     </colgroup>
     <thead class="applications-table-header">
       <tr>
-        <th>Role</th>
-        <th>Company</th>
-        <th><abbr title="Payment">Pay</abbr></th>
-        <th><abbr title="Job post">Post</abbr></th>
-        <th>CV</th>
-        <th><abbr title="Agency flag">Agency</abbr></th>
-        <th><abbr title="Fully remote">Remote</abbr></th>
-        <th><abbr title="Current stage">Stage</abbr></th>
-        <th><abbr title="Current stage note">Stage note</abbr></th>
-        <th>Notes</th>
-        <th>Submitted</th>
-        <th><abbr title="Last updated">Updated</abbr></th>
+        <th><abbr title="Role and fully remote">Role / Remote</abbr></th>
+        <th><abbr title="Company and current stage">Company / Stage</abbr></th>
+        <th><abbr title="Payment and current stage note">Pay / Stage note</abbr></th>
+        <th><abbr title="Job post URL and notes">URL / Notes</abbr></th>
+        <th><abbr title="CV and submitted date">CV / Submitted</abbr></th>
+        <th><abbr title="Agency flag and last updated date">Agency / Updated</abbr></th>
       </tr>
     </thead>
-  <tbody id="applications">{% for application in applications %}{% include 'applications/_application_row.html' %}{% else %}<tr><td colspan="12">{% if q %}No applications match “{{ q }}”.{% else %}No applications yet.{% endif %}</td></tr>{% endfor %}</tbody>
+  {% for application in applications %}
+    {% include 'applications/_application_row.html' %}
+  {% else %}
+    <tbody id="applications"><tr><td colspan="6">{% if q %}No applications match “{{ q }}”.{% else %}No applications yet.{% endif %}</td></tr></tbody>
+  {% endfor %}
   </table>
 </div>
 {% endblock %}

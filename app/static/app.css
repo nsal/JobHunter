@@ -3,6 +3,11 @@ body { margin: 0; line-height: 1.45; }
 header { display: flex; gap: 1rem; padding: 1rem max(1rem, calc((100% - 72rem) / 2)); background: #1d2733; color: #fff; }
 header a { color: #fff; font-weight: 700; text-decoration: none; }
 main { max-width: 72rem; margin: 2rem auto; padding: 0 1rem; }
+main.dashboard-main {
+  margin-inline: clamp(1rem, 3vw, 3rem);
+  max-width: none;
+  padding: 0;
+}
 .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .button, button {
   background: #1769aa;
@@ -70,31 +75,29 @@ th { background: #eaf1f8; color: #17212b; }
   padding: .4rem;
 }
 .applications-table { min-width: 0; table-layout: fixed; }
-.applications-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.applications-table td { overflow-wrap: anywhere; white-space: normal; }
 .applications-table td > a, .applications-table td > button {
-  display: block;
+  font: inherit;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.applications-table .application-role-column { width: 10%; }
-.applications-table .application-company-column { width: 10%; }
-.applications-table .application-payment-column { width: 6%; }
-.applications-table .application-job-column { width: 5.5%; }
-.applications-table .application-cv-column { width: 6%; }
-.applications-table .application-agency-column { width: 5.5%; }
-.applications-table .application-remote-column { width: 6%; }
-.applications-table .application-stage-column { width: 7.5%; }
-.applications-table .application-stage-note-column { width: 10%; }
-.applications-table .application-notes-column { width: 10%; }
-.applications-table .application-submitted-column { width: 12%; }
-.applications-table .application-updated-column { width: 12%; }
+.applications-table .application-role-column,
+.applications-table .application-company-column,
+.applications-table .application-payment-column,
+.applications-table .application-url-column,
+.applications-table .application-cv-column,
+.applications-table .application-agency-column { width: 16.666%; }
 .applications-table-header th {
   text-align: center;
   vertical-align: middle;
   white-space: nowrap;
 }
+.table-field-label { display: none; }
+.applications-table .application-detail-row .table-field-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: .2rem;
+}
+.applications-table .cv-preview-button { padding: .3rem .5rem; }
 .date-cell { min-width: 6.5rem; white-space: nowrap; }
 @media (max-width: 40rem) {
   .applications-table-wrap { overflow: visible; }
@@ -103,10 +106,14 @@ th { background: #eaf1f8; color: #17212b; }
   .applications-table colgroup, .applications-table-header { display: none; }
   .applications-table { table-layout: auto; }
   .applications-table tbody { display: grid; gap: .8rem; }
-  .applications-table tr {
+  .applications-table tbody.application-group {
     border: 1px solid #b8c2cc;
     border-radius: .25rem;
     overflow: hidden;
+  }
+  .applications-table tr {
+    border: 0;
+    border-radius: 0;
   }
   .applications-table td {
     align-items: start;
@@ -137,6 +144,9 @@ th { background: #eaf1f8; color: #17212b; }
     overflow: visible;
     text-overflow: clip;
     white-space: nowrap;
+  }
+  .applications-table .application-detail-row .table-field-label {
+    display: none;
   }
 }
 .table-edit { background: none; color: inherit; padding: 0; text-align: left; text-decoration: underline; }

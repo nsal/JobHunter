@@ -323,7 +323,8 @@ async def test_dashboard_overlay_search_dates_and_previews(
     assert "data-open-application-dialog" in dashboard.text
     assert 'value="acme"' in dashboard.text
     assert "2026-08-04" in dashboard.text
-    assert ("N" * 300) + "…" in dashboard.text
+    assert notes in dashboard.text
+    assert ("N" * 300) + "…" not in dashboard.text
     assert 'class="search-action"' in dashboard.text
     assert 'class="button search-action"' in dashboard.text
     assert 'class="date-cell" data-label="Submitted"' in dashboard.text
@@ -373,17 +374,27 @@ async def test_dashboard_uses_consistent_table_markup_and_safe_job_links(
     assert created.status_code == 303
 
     dashboard = await client.get("/")
+    assert '<main class="dashboard-main">' in dashboard.text
     assert 'class="applications-table"' in dashboard.text
     assert 'class="applications-table-header"' in dashboard.text
     assert 'class="table-wrap applications-table-wrap"' in dashboard.text
-    assert '<abbr title="Payment">Pay</abbr>' in dashboard.text
-    assert '<abbr title="Current stage">Stage</abbr>' in dashboard.text
+    assert (
+        '<abbr title="Payment and current stage note">Pay / Stage note</abbr>'
+        in (dashboard.text)
+    )
+    assert '<abbr title="Job post URL and notes">URL / Notes</abbr>' in (
+        dashboard.text
+    )
+    assert '<tbody id="application-1" class="application-group">' in (
+        dashboard.text
+    )
+    assert dashboard.text.count("<tr") == 3
     assert 'data-label="Submitted"' in dashboard.text
     assert 'data-label="Updated"' in dashboard.text
     assert 'href="https://jobs.example.test/engineer" target="_blank"' in (
         dashboard.text
     )
-    assert 'rel="noopener noreferrer">Job post</a>' in dashboard.text
+    assert 'rel="noopener noreferrer">URL</a>' in dashboard.text
 
     detail = await client.get(created.headers["location"])
     assert 'href="https://jobs.example.test/engineer" target="_blank"' in (
@@ -406,8 +417,8 @@ async def test_dashboard_uses_an_absent_marker_for_missing_job_urls(
     assert created.status_code == 303
 
     dashboard = await client.get("/")
-    assert "Job post</a>" not in dashboard.text
-    assert 'data-label="Job post"' in dashboard.text
+    assert ">URL</a>" not in dashboard.text
+    assert 'data-label="URL"' in dashboard.text
     assert "—" in dashboard.text
 
     detail = await client.get(created.headers["location"])
@@ -499,7 +510,14 @@ def test_dashboard_styles_define_shared_typography_and_compact_history() -> (
         stylesheet
     )
     assert "font-size: .8125rem" in stylesheet
-    assert "text-overflow: ellipsis" in stylesheet
+    assert "main.dashboard-main" in stylesheet
+    assert "max-width: none" in stylesheet
+    assert "overflow-wrap: anywhere" in stylesheet
+    assert "text-overflow: ellipsis" not in stylesheet
+    assert ".applications-table .application-detail-row .table-field-label" in (
+        stylesheet
+    )
+    assert ".applications-table .cv-preview-button" in stylesheet
     assert ".applications-table td::before" in stylesheet
     assert "content: attr(data-label)" in stylesheet
     assert ".applications-table .date-cell" in stylesheet
@@ -518,13 +536,13 @@ def test_new_application_upload_status_uses_accessible_client_markup() -> None:
     assert '"No file selected"' in script
 
 
-async def test_dashboard_compacts_long_application_values(
+async def test_dashboard_renders_long_application_values_without_truncation(
     client: httpx2.AsyncClient,
 ) -> None:
     role = "Principal Platform Engineer with a Very Long Title"
     company = "International Example Company with a Long Legal Name"
     stage_note = "First interview with several team members and a long agenda"
-    notes = "Follow up after the interview with the hiring committee"
+    notes = "N" * 301
     created = await client.post(
         "/applications",
         data={
@@ -543,10 +561,12 @@ async def test_dashboard_compacts_long_application_values(
     assert updated.status_code == 303
 
     dashboard = await client.get("/")
-    assert f'title="{role}"' in dashboard.text
-    assert f'title="{company}"' in dashboard.text
-    assert f'title="{stage_note}"' in dashboard.text
-    assert f'title="{notes}"' in dashboard.text
+    assert role in dashboard.text
+    assert company in dashboard.text
+    assert stage_note in dashboard.text
+    assert notes in dashboard.text
+    assert f"{notes[:300]}…" not in dashboard.text
+    assert dashboard.text.count("<tr") == 3
     assert 'data-label="Current stage"' in dashboard.text
     assert 'data-label="Stage note"' in dashboard.text
     assert 'data-label="Notes"' in dashboard.text
@@ -571,7 +591,10 @@ async def test_agency_labels_preserve_the_existing_recruiter_field(
     assert "Recruiter" not in create_form.text
 
     dashboard = await client.get("/")
-    assert '<abbr title="Agency flag">Agency</abbr>' in dashboard.text
+    assert (
+        '<abbr title="Agency flag and last updated date">Agency / Updated</abbr>'
+        in dashboard.text
+    )
     assert "Recruiter" not in dashboard.text
     assert ">Yes</td>" in dashboard.text
 
@@ -603,6 +626,7 @@ async def test_dashboard_stage_editor_updates_row(
     )
     assert updated.status_code == 200
     assert 'id="application-1"' in updated.text
+    assert updated.text.count("<tr") == 2
     assert "Interview" in updated.text
     assert updated.headers["HX-Trigger"] == "close-stage-editor"
 
@@ -624,6 +648,9 @@ async def test_dashboard_notes_editor_updates_and_clears_notes(
         follow_redirects=False,
     )
     location = created.headers["location"]
+    dashboard = await client.get("/")
+    assert "&lt;old&gt;" in dashboard.text
+
     editor = await client.get(f"{location}/notes-editor")
     assert editor.status_code == 200
     assert "&lt;old&gt;" in editor.text

@@ -36,4 +36,5 @@ async def test_dashboard_uses_preview_and_download_cv_actions(
         f'data-preview-url="{first.headers["location"]}/cv/preview"'
         in dashboard.text
     )
+    assert 'class="cv-preview-button"' in dashboard.text
     assert f'href="{second.headers["location"]}/cv/download"' in dashboard.text

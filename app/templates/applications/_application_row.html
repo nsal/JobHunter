@@ -1,4 +1,5 @@
-<tr id="application-{{ application.id }}">
+<tbody id="application-{{ application.id }}" class="application-group">
+  <tr>
   <td data-label="Role" title="{{ application.role }}">
     <a href="/applications/{{ application.id }}">{{ application.role }}</a>
   </td>
@@ -8,16 +9,17 @@
   <td data-label="Payment" title="{{ application.payment or 'Not supplied' }}">
     {{ application.payment or '—' }}
   </td>
-  <td data-label="Job post">
+  <td data-label="URL">
     {% if application.job_url %}
       <a href="{{ application.job_url }}" target="_blank"
-         rel="noopener noreferrer">Job post</a>
+         rel="noopener noreferrer">URL</a>
     {% else %}—{% endif %}
   </td>
   <td data-label="CV">
     {% if application.cv_path %}
       {% if (application.cv_path|lower).endswith('.pdf') %}
         <button type="button"
+                class="cv-preview-button"
                 data-preview-url="/applications/{{ application.id }}/cv/preview">
           Preview CV
         </button>
@@ -27,10 +29,14 @@
     {% else %}—{% endif %}
   </td>
   <td data-label="Agency">{{ 'Yes' if application.is_recruiter else 'No' }}</td>
+  </tr>
+  <tr class="application-detail-row">
   <td data-label="Fully remote">
+    <span class="table-field-label">Remote</span>
     {{ 'Yes' if application.is_fully_remote else 'No' }}
   </td>
   <td data-label="Current stage" title="{{ application.current_stage }}">
+    <span class="table-field-label">Stage</span>
     <button class="table-edit" type="button" data-open-stage-editor
             data-stage-editor-url="/applications/{{ application.id }}/stage-editor">
       {{ application.current_stage }}
@@ -38,25 +44,30 @@
   </td>
   <td data-label="Stage note"
       title="{{ application.current_stage_description or 'Not supplied' }}">
+    <span class="table-field-label">Stage note</span>
     <button class="table-edit" type="button" data-open-stage-editor
             data-stage-editor-url="/applications/{{ application.id }}/stage-editor">
       {{ application.current_stage_description or '—' }}
     </button>
   </td>
   <td data-label="Notes" title="{{ application.notes or 'Not supplied' }}">
+    <span class="table-field-label">Notes</span>
     <button class="table-edit" type="button" data-open-notes-editor
             data-notes-editor-url="/applications/{{ application.id }}/notes-editor">
-      {{ application.notes|preview_text }}
+      {{ application.notes or '—' }}
     </button>
   </td>
   <td class="date-cell" data-label="Submitted">
+    <span class="table-field-label">Submitted</span>
     <time datetime="{{ application.submitted_date }}">
       {{ application.submitted_date|date_only }}
     </time>
   </td>
   <td class="date-cell" data-label="Updated">
+    <span class="table-field-label">Updated</span>
     <time datetime="{{ application.last_updated_date }}">
       {{ application.last_updated_date|date_only }}
     </time>
   </td>
 </tr>
+</tbody>
