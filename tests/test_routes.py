@@ -1,5 +1,4 @@
 from pathlib import Path
-from urllib.parse import quote
 
 import httpx2
 import pytest
@@ -134,46 +133,18 @@ async def test_link_validation_and_optional_job_url(
     assert created.status_code == 303
 
 
-async def test_cv_picker_and_delivery_routes(
+async def test_cv_delivery_routes(
     client: httpx2.AsyncClient,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cv_root = tmp_path / "cvs"
     cv_root.mkdir()
-    folder = cv_root / "roles"
-    folder.mkdir()
-    special_folder_name = "Résumé & # space"
-    special_folder = cv_root / special_folder_name
-    special_folder.mkdir()
-    nested_special_folder = special_folder / "nested"
-    nested_special_folder.mkdir()
-    pdf = folder / "resume.pdf"
+    pdf = cv_root / "resume.pdf"
     pdf.write_bytes(b"%PDF-1.4")
     docx = cv_root / "resume.docx"
     docx.write_bytes(b"word content")
-    (cv_root / "ignore.txt").touch()
     monkeypatch.setenv("JOBHUNTER_CV_ROOT", str(cv_root))
-
-    picker = await client.get("/cv-picker")
-    assert picker.status_code == 200
-    assert "roles" in picker.text
-    assert "ignore.txt" not in picker.text
-    encoded_special_folder = quote(special_folder_name, safe="")
-    assert f"directory={encoded_special_folder}" in picker.text
-
-    folder_picker = await client.get("/cv-picker?directory=roles")
-    assert folder_picker.status_code == 200
-    assert pdf.as_uri() in folder_picker.text
-
-    encoded_nested_special_folder = quote(
-        f"{special_folder_name}/nested", safe=""
-    )
-    special_picker = await client.get(
-        f"/cv-picker?directory={encoded_nested_special_folder}"
-    )
-    assert special_picker.status_code == 200
-    assert f"directory={encoded_special_folder}" in special_picker.text
 
     created = await client.post(
         "/applications",
@@ -233,7 +204,7 @@ async def test_cv_detail_actions_are_case_insensitive(
     assert "Preview CV" not in detail.text
 
 
-async def test_cv_routes_reject_invalid_picker_and_legacy_paths(
+async def test_cv_routes_reject_missing_paths(
     client: httpx2.AsyncClient,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -241,10 +212,6 @@ async def test_cv_routes_reject_invalid_picker_and_legacy_paths(
     cv_root = tmp_path / "cvs"
     cv_root.mkdir()
     monkeypatch.setenv("JOBHUNTER_CV_ROOT", str(cv_root))
-    assert (
-        await client.get("/cv-picker?directory=../outside")
-    ).status_code == 400
-
     created = await client.post(
         "/applications",
         data={"role": "Engineer", "company": "Acme"},
@@ -253,6 +220,86 @@ async def test_cv_routes_reject_invalid_picker_and_legacy_paths(
     assert (
         await client.get(f"{created.headers['location']}/cv/download")
     ).status_code == 404
+
+
+async def test_native_cv_upload_storage_and_replacement(
+    client: httpx2.AsyncClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cv_root = tmp_path / "artefacts"
+    monkeypatch.setenv("JOBHUNTER_CV_ROOT", str(cv_root))
+    created = await client.post(
+        "/applications",
+        data={"role": "Engineer", "company": "Acme / Europe"},
+        files={"cv_upload": ("resume.pdf", b"%PDF-1.4", "application/pdf")},
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+    location = created.headers["location"]
+    stored = list(cv_root.rglob("resume.pdf"))
+    assert len(stored) == 1
+    assert stored[0].relative_to(cv_root).parts[:2] == (
+        "Acme-Europe",
+        "2026-08-04 Engineer",
+    )
+    assert (await client.get(f"{location}/cv/preview")).status_code == 200
+
+    preserved = await client.post(
+        location,
+        data={"role": "Engineer", "company": "Acme / Europe"},
+        follow_redirects=False,
+    )
+    assert preserved.status_code == 303
+    assert (await client.get(f"{location}/cv/preview")).status_code == 200
+
+    replaced = await client.post(
+        location,
+        data={"role": "Engineer", "company": "Acme / Europe"},
+        files={
+            "cv_upload": (
+                "resume.docx",
+                b"word content",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+        follow_redirects=False,
+    )
+    assert replaced.status_code == 303
+    assert (await client.get(f"{location}/cv/preview")).status_code == 422
+    assert (await client.get(f"{location}/cv/download")).status_code == 200
+
+
+async def test_native_cv_upload_rejects_unsafe_input_without_files(
+    client: httpx2.AsyncClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cv_root = tmp_path / "artefacts"
+    monkeypatch.setenv("JOBHUNTER_CV_ROOT", str(cv_root))
+    invalid_type = await client.post(
+        "/applications",
+        data={"role": "Engineer", "company": "Acme"},
+        files={"cv_upload": ("resume.txt", b"not a CV", "text/plain")},
+    )
+    assert invalid_type.status_code == 422
+    assert "CV must be a PDF, DOC, or DOCX file" in invalid_type.text
+
+    empty_upload = await client.post(
+        "/applications",
+        data={"role": "Engineer", "company": "Acme"},
+        files={"cv_upload": ("resume.pdf", b"", "application/pdf")},
+    )
+    assert empty_upload.status_code == 422
+    assert "CV upload must not be empty" in empty_upload.text
+
+    invalid_application = await client.post(
+        "/applications",
+        data={"company": "Acme"},
+        files={"cv_upload": ("resume.pdf", b"%PDF-1.4", "application/pdf")},
+    )
+    assert invalid_application.status_code == 422
+    assert list(cv_root.rglob("*.pdf")) == []
 
 
 async def test_dashboard_overlay_search_dates_and_previews(
@@ -275,14 +322,89 @@ async def test_dashboard_overlay_search_dates_and_previews(
     dashboard = await client.get("/?q=acme")
     assert "data-open-application-dialog" in dashboard.text
     assert 'value="acme"' in dashboard.text
-    assert "T" not in dashboard.text
+    assert ">2026-08-04</time>" in dashboard.text
     assert ("N" * 300) + "…" in dashboard.text
+    assert 'class="search-action"' in dashboard.text
+    assert 'class="button search-action"' in dashboard.text
+    assert 'class="date-cell"><time datetime=' in dashboard.text
 
     form = await client.get("/applications/new", headers={"HX-Request": "true"})
     assert form.status_code == 200
     assert 'id="application-form"' in form.text
     assert "form-grid" in form.text
+    assert 'type="file" name="cv_upload"' in form.text
+    assert 'data-close-dialog="application-dialog"' in form.text
+    assert 'enctype="multipart/form-data"' in form.text
+
+    direct_form = await client.get("/applications/new")
+    assert 'class="button" href="/">Cancel</a>' in direct_form.text
+    assert "cv-picker-dialog" not in direct_form.text
 
     detail = await client.get(location)
     assert "<details>" in detail.text
     assert ("D" * 300) + "…" in detail.text
+
+
+async def test_dashboard_stage_editor_updates_row(
+    client: httpx2.AsyncClient,
+) -> None:
+    created = await client.post(
+        "/applications",
+        data={"role": "Engineer", "company": "Acme"},
+        follow_redirects=False,
+    )
+    location = created.headers["location"]
+    editor = await client.get(f"{location}/stage-editor")
+    assert editor.status_code == 200
+    assert 'data-close-dialog="stage-editor-dialog"' in editor.text
+    assert '<option value="Submitted" selected>' in editor.text
+
+    updated = await client.post(
+        f"{location}/stage-editor",
+        data={"stage": "Interview", "stage_description": "First screen"},
+        headers={"HX-Request": "true"},
+    )
+    assert updated.status_code == 200
+    assert 'id="application-1"' in updated.text
+    assert "Interview" in updated.text
+    assert updated.headers["HX-Trigger"] == "close-stage-editor"
+
+    invalid = await client.post(
+        f"{location}/stage-editor",
+        data={"stage": "Invalid", "stage_description": "Bad"},
+        headers={"HX-Request": "true"},
+    )
+    assert invalid.status_code == 422
+    assert "Choose a valid stage" in invalid.text
+
+
+async def test_dashboard_notes_editor_updates_and_clears_notes(
+    client: httpx2.AsyncClient,
+) -> None:
+    created = await client.post(
+        "/applications",
+        data={"role": "Engineer", "company": "Acme", "notes": "<old>\ntext"},
+        follow_redirects=False,
+    )
+    location = created.headers["location"]
+    editor = await client.get(f"{location}/notes-editor")
+    assert editor.status_code == 200
+    assert "&lt;old&gt;" in editor.text
+    assert 'data-close-dialog="notes-editor-dialog"' in editor.text
+
+    updated = await client.post(
+        f"{location}/notes-editor",
+        data={"notes": "Updated\nnotes"},
+        headers={"HX-Request": "true"},
+    )
+    assert updated.status_code == 200
+    assert "Updated" in updated.text
+    assert updated.headers["HX-Trigger"] == "close-notes-editor"
+
+    cleared = await client.post(
+        f"{location}/notes-editor",
+        data={"notes": ""},
+        headers={"HX-Request": "true"},
+    )
+    assert cleared.status_code == 200
+    assert "—" in cleared.text

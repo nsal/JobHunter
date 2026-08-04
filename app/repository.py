@@ -214,6 +214,16 @@ class Repository:
             if cursor.rowcount == 0:
                 raise ApplicationNotFoundError("Application not found.")
 
+    def update_notes(self, application_id: int, notes: str | None) -> None:
+        """Replace an application's notes without changing other fields."""
+        with connect(self.database_path) as connection:
+            cursor = connection.execute(
+                "UPDATE applications SET notes = ? WHERE id = ?",
+                (_optional(notes), application_id),
+            )
+            if cursor.rowcount == 0:
+                raise ApplicationNotFoundError("Application not found.")
+
     def add_stage(
         self,
         application_id: int,
@@ -262,3 +272,34 @@ class Repository:
                     effective_from,
                 ),
             )
+
+    def update_current_stage(
+        self,
+        application_id: int,
+        stage: str,
+        description: str | None,
+        effective_from: str,
+    ) -> None:
+        """Update a current note or append a stage transition."""
+        if stage not in STAGES:
+            raise ValueError("Choose a valid stage.")
+        with connect(self.database_path) as connection:
+            current = connection.execute(
+                """SELECT id, stage FROM submission_history
+                WHERE application_id = ? AND is_current = 1""",
+                (application_id,),
+            ).fetchone()
+            if current is None:
+                exists = connection.execute(
+                    "SELECT 1 FROM applications WHERE id = ?", (application_id,)
+                ).fetchone()
+                if exists is None:
+                    raise ApplicationNotFoundError("Application not found.")
+                raise ValueError("Application has no current stage.")
+            if current["stage"] == stage:
+                connection.execute(
+                    "UPDATE submission_history SET stage_description = ? WHERE id = ?",
+                    (_optional(description), current["id"]),
+                )
+                return
+        self.add_stage(application_id, stage, effective_from, description)

@@ -7,9 +7,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -22,10 +22,8 @@ from fastapi.templating import Jinja2Templates
 from app.cv_files import (
     CvFileError,
     cv_path,
-    cv_root,
-    picker_directory,
-    picker_entries,
 )
+from app.cv_uploads import remove_cv_upload, store_cv_upload
 from app.database import STAGES, initialize_database
 from app.repository import ApplicationNotFoundError, Repository
 
@@ -100,33 +98,6 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/cv-picker", response_class=HTMLResponse)
-    def cv_picker(
-        request: Request, directory: str | None = None
-    ) -> HTMLResponse:
-        try:
-            current = picker_directory(directory)
-            directories, files = picker_entries(current)
-        except CvFileError as error:
-            raise HTTPException(status_code=400, detail=str(error)) from error
-        root = cv_root()
-        parent = current.parent if current != root else None
-        return templates.TemplateResponse(
-            request,
-            "applications/_cv_picker.html",
-            {
-                "directory": current.relative_to(root),
-                "parent": parent.relative_to(root) if parent else None,
-                "directories": [
-                    {"name": item.name, "path": item.relative_to(root)}
-                    for item in directories
-                ],
-                "files": [
-                    {"name": item.name, "uri": item.as_uri()} for item in files
-                ],
-            },
-        )
-
     @app.get("/", response_class=HTMLResponse)
     def application_list(request: Request, q: str = "") -> HTMLResponse:
         search = q.strip()
@@ -143,6 +114,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
             "application": {},
             "action": "/applications",
             "submit_label": "Create application",
+            "is_dialog": bool(request.headers.get("HX-Request")),
         }
         if request.headers.get("HX-Request"):
             return templates.TemplateResponse(
@@ -155,13 +127,14 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         )
 
     @app.post("/applications", response_class=HTMLResponse)
-    def create_application(
+    async def create_application(
         request: Request,
         role: str = Form(""),
         company: str = Form(""),
         payment: str | None = Form(None),
         job_url: str | None = Form(None),
         cv_path: str | None = Form(None),
+        cv_upload: Annotated[UploadFile | None, File()] = None,
         is_recruiter: str | None = Form(None),
         is_fully_remote: str | None = Form(None),
         notes: str | None = Form(None),
@@ -178,16 +151,25 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
             notes,
             full_jd,
         )
+        uploaded_location: str | None = None
         try:
+            if cv_upload is not None:
+                uploaded_location = await store_cv_upload(
+                    cv_upload, company, role
+                )
+                if uploaded_location:
+                    values["cv_path"] = uploaded_location
             application_id = request.app.state.repository.create_application(
                 values, now_value()
             )
-        except ValueError as error:
+        except (CvFileError, ValueError) as error:
+            remove_cv_upload(uploaded_location)
             context = {
                 "application": values,
                 "action": "/applications",
                 "submit_label": "Create application",
                 "error": str(error),
+                "is_dialog": bool(request.headers.get("HX-Request")),
             }
             if request.headers.get("HX-Request"):
                 return templates.TemplateResponse(
@@ -265,7 +247,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         return FileResponse(path, media_type=media_type, filename=path.name)
 
     @app.post("/applications/{application_id}", response_class=HTMLResponse)
-    def update_application(
+    async def update_application(
         application_id: int,
         request: Request,
         role: str = Form(""),
@@ -273,6 +255,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         payment: str | None = Form(None),
         job_url: str | None = Form(None),
         cv_path: str | None = Form(None),
+        cv_upload: Annotated[UploadFile | None, File()] = None,
         is_recruiter: str | None = Form(None),
         is_fully_remote: str | None = Form(None),
         notes: str | None = Form(None),
@@ -289,13 +272,26 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
             notes,
             full_jd,
         )
+        uploaded_location: str | None = None
         try:
+            existing = request.app.state.repository.get_application(
+                application_id
+            )
+            if cv_upload is not None:
+                uploaded_location = await store_cv_upload(
+                    cv_upload, company, role
+                )
+                if uploaded_location:
+                    values["cv_path"] = uploaded_location
+            if not values["cv_path"]:
+                values["cv_path"] = existing.get("cv_path")
             request.app.state.repository.update_application(
                 application_id, values
             )
         except ApplicationNotFoundError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
-        except ValueError as error:
+        except (CvFileError, ValueError) as error:
+            remove_cv_upload(uploaded_location)
             values["id"] = application_id
             context = {
                 "application": values,
@@ -371,6 +367,116 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
                 },
                 status_code=422,
             )
+
+    @app.get(
+        "/applications/{application_id}/stage-editor",
+        response_class=HTMLResponse,
+    )
+    def stage_editor(application_id: int, request: Request) -> HTMLResponse:
+        try:
+            application = request.app.state.repository.get_application(
+                application_id
+            )
+        except ApplicationNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return templates.TemplateResponse(
+            request,
+            "applications/_stage_editor.html",
+            {"application": application, "stages": STAGES},
+        )
+
+    @app.post(
+        "/applications/{application_id}/stage-editor",
+        response_class=HTMLResponse,
+    )
+    def update_dashboard_stage(
+        application_id: int,
+        request: Request,
+        stage: str = Form(""),
+        stage_description: str | None = Form(None),
+    ) -> Response:
+        try:
+            request.app.state.repository.update_current_stage(
+                application_id, stage, stage_description, now_value()
+            )
+            application = request.app.state.repository.get_application(
+                application_id
+            )
+        except ApplicationNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            try:
+                application = request.app.state.repository.get_application(
+                    application_id
+                )
+            except ApplicationNotFoundError as missing:
+                raise HTTPException(
+                    status_code=404, detail=str(missing)
+                ) from missing
+            return templates.TemplateResponse(
+                request,
+                "applications/_stage_editor.html",
+                {
+                    "application": application,
+                    "stages": STAGES,
+                    "error": str(error),
+                    "stage_values": {
+                        "stage": stage,
+                        "stage_description": stage_description,
+                    },
+                },
+                status_code=422,
+            )
+        if request.headers.get("HX-Request"):
+            return templates.TemplateResponse(
+                request,
+                "applications/_application_row.html",
+                {"application": application},
+                headers={"HX-Trigger": "close-stage-editor"},
+            )
+        return RedirectResponse("/", status_code=303)
+
+    @app.get(
+        "/applications/{application_id}/notes-editor",
+        response_class=HTMLResponse,
+    )
+    def notes_editor(application_id: int, request: Request) -> HTMLResponse:
+        try:
+            application = request.app.state.repository.get_application(
+                application_id
+            )
+        except ApplicationNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        return templates.TemplateResponse(
+            request,
+            "applications/_notes_editor.html",
+            {"application": application},
+        )
+
+    @app.post(
+        "/applications/{application_id}/notes-editor",
+        response_class=HTMLResponse,
+    )
+    def update_dashboard_notes(
+        application_id: int,
+        request: Request,
+        notes: str | None = Form(None),
+    ) -> Response:
+        try:
+            request.app.state.repository.update_notes(application_id, notes)
+            application = request.app.state.repository.get_application(
+                application_id
+            )
+        except ApplicationNotFoundError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        if request.headers.get("HX-Request"):
+            return templates.TemplateResponse(
+                request,
+                "applications/_application_row.html",
+                {"application": application},
+                headers={"HX-Trigger": "close-notes-editor"},
+            )
+        return RedirectResponse("/", status_code=303)
 
     return app
 

@@ -15,12 +15,17 @@ class CvFileError(ValueError):
 
 
 def cv_root() -> Path:
-    """Return the resolved directory from which CVs may be selected."""
+    """Return the resolved private directory used for managed CV artefacts."""
     configured = os.getenv(CV_ROOT_ENV)
     return (
         Path(configured).expanduser().resolve()
         if configured
-        else Path.home().resolve()
+        else (
+            Path(__file__).resolve().parent.parent
+            / "private"
+            / "cv"
+            / "artefacts"
+        ).resolve()
     )
 
 
@@ -70,41 +75,3 @@ def normalize_cv_location(value: str | None) -> str | None:
     if not cleaned:
         return None
     return cv_path(cleaned).as_uri()
-
-
-def picker_directory(value: str | None) -> Path:
-    """Return a safe picker directory addressed relative to the CV root."""
-    root = cv_root()
-    if not value:
-        return root
-    candidate = (root / value).resolve()
-    try:
-        candidate.relative_to(root)
-    except ValueError as error:
-        raise CvFileError(
-            "Picker directory is outside the configured CV root."
-        ) from error
-    if not candidate.is_dir():
-        raise CvFileError("Picker directory does not exist.")
-    return candidate
-
-
-def picker_entries(directory: Path) -> tuple[list[Path], list[Path]]:
-    """Return safe child directories and supported files for the picker."""
-    root = cv_root()
-    directories: list[Path] = []
-    files: list[Path] = []
-    for item in directory.iterdir():
-        try:
-            resolved = item.resolve(strict=True)
-            resolved.relative_to(root)
-        except OSError, ValueError:
-            continue
-        if resolved.is_dir():
-            directories.append(resolved)
-        elif resolved.is_file() and resolved.suffix.lower() in CV_SUFFIXES:
-            files.append(resolved)
-    return (
-        sorted(directories, key=lambda item: item.name.lower()),
-        sorted(files, key=lambda item: item.name.lower()),
-    )

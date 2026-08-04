@@ -1,13 +1,35 @@
 "use strict";
 
-let activeCvControl = null;
-
 function openDialog(dialogId) {
   const dialog = document.getElementById(dialogId);
   if (dialog && !dialog.open) {
     dialog.showModal();
   }
 }
+
+function closeDialog(dialogId) {
+  const dialog = document.getElementById(dialogId);
+  if (dialog?.open) {
+    dialog.close();
+  }
+  if (dialogId === "cv-preview-dialog") {
+    document.getElementById("cv-preview-frame").src = "";
+  }
+}
+
+document
+  .getElementById("cv-preview-dialog")
+  ?.addEventListener("close", () => {
+    document.getElementById("cv-preview-frame").src = "";
+  });
+
+document.body.addEventListener("close-stage-editor", () => {
+  closeDialog("stage-editor-dialog");
+});
+
+document.body.addEventListener("close-notes-editor", () => {
+  closeDialog("notes-editor-dialog");
+});
 
 document.addEventListener("click", (event) => {
   const target = event.target.closest("button");
@@ -16,13 +38,7 @@ document.addEventListener("click", (event) => {
   }
   const dialogId = target.dataset.closeDialog;
   if (dialogId) {
-    document.getElementById(dialogId)?.close();
-    return;
-  }
-  if (target.dataset.openCvPicker !== undefined) {
-    activeCvControl = target.closest(".cv-control");
-    openDialog("cv-picker-dialog");
-    window.htmx.ajax("GET", "/cv-picker", "#cv-picker-content");
+    closeDialog(dialogId);
     return;
   }
   if (target.dataset.openApplicationDialog !== undefined) {
@@ -30,12 +46,22 @@ document.addEventListener("click", (event) => {
     window.htmx.ajax("GET", "/applications/new", "#application-dialog-content");
     return;
   }
-  if (target.dataset.cvUri && activeCvControl) {
-    activeCvControl.querySelector("input[name='cv_path']").value =
-      target.dataset.cvUri;
-    activeCvControl.querySelector("[data-cv-name]").textContent =
-      target.dataset.cvName;
-    document.getElementById("cv-picker-dialog").close();
+  if (target.dataset.openStageEditor !== undefined) {
+    openDialog("stage-editor-dialog");
+    window.htmx.ajax(
+      "GET",
+      target.dataset.stageEditorUrl,
+      "#stage-editor-content",
+    );
+    return;
+  }
+  if (target.dataset.openNotesEditor !== undefined) {
+    openDialog("notes-editor-dialog");
+    window.htmx.ajax(
+      "GET",
+      target.dataset.notesEditorUrl,
+      "#notes-editor-content",
+    );
     return;
   }
   if (target.dataset.previewUrl) {

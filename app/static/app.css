@@ -15,6 +15,7 @@ textarea { min-height: 5rem; }
 .checkbox-label input { width: auto; }
 .cv-control { display: grid; align-content: start; gap: .25rem; font-weight: 600; }
 .cv-control [data-cv-name], .path-summary { font-weight: 400; overflow-wrap: anywhere; }
+.form-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
 dialog { border: 0; border-radius: .5rem; box-shadow: 0 1rem 3rem #0008; max-width: min(44rem, calc(100vw - 2rem)); width: 100%; }
 dialog::backdrop { background: #0008; }
 .dialog-heading { align-items: center; background: none; color: inherit; display: flex; justify-content: space-between; padding: 0; }
@@ -26,9 +27,12 @@ dialog::backdrop { background: #0008; }
 .search-form { align-items: end; display: flex; flex-wrap: wrap; max-width: none; }
 .search-form label { flex-basis: 100%; }
 .search-form input { flex: 1 1 20rem; }
+.search-form .search-action { align-items: center; box-sizing: border-box; display: inline-flex; height: 2.5rem; justify-content: center; padding: .55rem .8rem; width: 5.5rem; }
 table { border-collapse: collapse; min-width: 60rem; width: 100%; }
 th, td { border-bottom: 1px solid #b8c2cc; padding: .55rem; text-align: left; vertical-align: top; }
 th { background: #eaf1f8; color: #17212b; }
+.date-cell { min-width: 6.5rem; white-space: nowrap; }
+.table-edit { background: none; color: inherit; padding: 0; text-align: left; text-decoration: underline; }
 .error { border-left: .3rem solid #bd2727; padding: .5rem .75rem; color: #9b1515; }
 .details { display: grid; grid-template-columns: 12rem 1fr; gap: .5rem 1rem; }
 .details dt { font-weight: 700; }
