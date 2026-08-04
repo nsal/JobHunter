@@ -524,7 +524,9 @@ def test_dashboard_styles_define_shared_typography_and_compact_history() -> (
     assert "overflow-wrap: anywhere" in stylesheet
     assert ".applications-table .table-cell-content" in stylesheet
     assert "-webkit-line-clamp: 2" in stylesheet
+    assert "box-sizing: border-box" in stylesheet
     assert "text-overflow: ellipsis" in stylesheet
+    assert "width: 100%" in stylesheet
     assert ".applications-table .cv-preview-button" in stylesheet
     assert ".applications-table td::before" in stylesheet
     assert "content: attr(data-label)" in stylesheet
@@ -579,6 +581,7 @@ async def test_dashboard_clamps_long_application_values_to_two_lines(
     assert 'data-label="Stage note"' not in dashboard.text
     assert f'title="Submitted — {stage_note}"' in dashboard.text
     assert 'data-label="Notes"' in dashboard.text
+    assert f'title="{notes}"' in dashboard.text
     assert 'data-label="Submitted"' in dashboard.text
     assert 'data-label="Updated"' in dashboard.text
 

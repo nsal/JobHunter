@@ -127,6 +127,9 @@
   with the required desktop table. Task 17 replaces it with the agreed
   one-row, 11-column, two-line-clamped layout while preserving its full-width
   dashboard improvement.
+- ⚠️ Follow-up review found that long Notes content can contribute intrinsic
+  button width and expand the desktop table. Task 18 constrains the existing
+  cell content to its assigned column without changing editor behavior.
 
 ## Solution Overview
 
@@ -691,7 +694,26 @@ the dashboard untouched.
 - [x] Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`,
   and `uv run mypy app` — all must pass before Task 18.
 
-### Task 18: Verify dashboard and stage-history acceptance criteria
+### Task 18: ➕ Constrain long Notes content to its dashboard column
+
+**Files:**
+- Modify: `app/static/app.css`
+- Modify: `tests/test_routes.py`
+
+- [x] Add `min-width: 0` to dashboard table cells and apply
+  `box-sizing: border-box`, `min-width: 0`, and `width: 100%` to the existing
+  `.table-cell-content` elements so intrinsic button text cannot expand a
+  fixed column.
+- [x] Preserve the two-line desktop clamp, ellipsis, fixed row height, Notes
+  title, and Notes editor trigger while keeping the mobile stacked layout
+  unrestricted and fully readable.
+- [x] Write stylesheet assertions for the shrink constraints and strengthen
+  long-Notes route coverage to prove the full value remains available through
+  the existing title/editor path.
+- [x] Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`,
+  and `uv run mypy app` — all must pass before Task 19.
+
+### Task 19: Verify dashboard and stage-history acceptance criteria
 
 **Files:**
 - Modify: `tests/test_routes.py` (only if verification identifies a gap)
@@ -700,7 +722,8 @@ the dashboard untouched.
 
 - [x] Verify all dashboard desktop and narrow-screen criteria together:
   full-width dashboard margins, one 11-column desktop row per application,
-  two-line-clamped values, merged Stage/Stage note editing, URL labels,
+  two-line-clamped values whose Notes cell cannot expand the table, merged
+  Stage/Stage note editing, URL labels,
   compact PDF previews, Agency labels, safe job links, and New application
   upload/focus behavior.
 - [x] Verify stage history cannot accept blank, placeholder, or duplicate
@@ -708,9 +731,9 @@ the dashboard untouched.
 - [x] Run the full test suite: `uv run pytest`.
 - [x] Run static checks: `uv run ruff check .`, `uv run ruff format --check .`,
   and `uv run mypy app`.
-- [x] Verify test coverage meets the project standard before Task 19.
+- [x] Verify test coverage meets the project standard before Task 20.
 
-### Task 19: Update documentation and close the plan
+### Task 20: Update documentation and close the plan
 
 **Files:**
 - Modify: `README.md` (if user-facing CV storage or supported formats need
