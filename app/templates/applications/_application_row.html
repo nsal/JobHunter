@@ -2,7 +2,12 @@
   <td><a href="/applications/{{ application.id }}">{{ application.role }}</a></td>
   <td>{{ application.company }}</td>
   <td>{{ application.payment or '—' }}</td>
-  <td>{% if application.job_url %}<a href="{{ application.job_url }}">Job post</a>{% else %}—{% endif %}</td>
+  <td>
+    {% if application.job_url %}
+      <a href="{{ application.job_url }}" target="_blank"
+         rel="noopener noreferrer">Job post</a>
+    {% else %}—{% endif %}
+  </td>
   <td>{% if application.cv_path %}{% if (application.cv_path|lower).endswith('.pdf') %}<button type="button" data-preview-url="/applications/{{ application.id }}/cv/preview">Preview CV</button>{% else %}<a href="/applications/{{ application.id }}/cv/download">Download CV</a>{% endif %}{% else %}—{% endif %}</td>
   <td>{{ 'Yes' if application.is_recruiter else 'No' }}</td>
   <td>{{ 'Yes' if application.is_fully_remote else 'No' }}</td>

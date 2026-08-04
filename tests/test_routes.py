@@ -345,6 +345,98 @@ async def test_dashboard_overlay_search_dates_and_previews(
     assert ("D" * 300) + "…" in detail.text
 
 
+async def test_dashboard_uses_consistent_table_markup_and_safe_job_links(
+    client: httpx2.AsyncClient,
+) -> None:
+    created = await client.post(
+        "/applications",
+        data={
+            "role": "Engineer",
+            "company": "Acme",
+            "job_url": "https://jobs.example.test/engineer",
+        },
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+
+    dashboard = await client.get("/")
+    assert 'class="applications-table"' in dashboard.text
+    assert 'class="applications-table-header"' in dashboard.text
+    assert 'href="https://jobs.example.test/engineer" target="_blank"' in (
+        dashboard.text
+    )
+    assert 'rel="noopener noreferrer">Job post</a>' in dashboard.text
+
+    detail = await client.get(created.headers["location"])
+    assert 'href="https://jobs.example.test/engineer" target="_blank"' in (
+        detail.text
+    )
+    assert (
+        'rel="noopener noreferrer">https://jobs.example.test/engineer</a>'
+        in (detail.text)
+    )
+
+
+async def test_dashboard_uses_an_absent_marker_for_missing_job_urls(
+    client: httpx2.AsyncClient,
+) -> None:
+    created = await client.post(
+        "/applications",
+        data={"role": "Engineer", "company": "Acme"},
+        follow_redirects=False,
+    )
+    assert created.status_code == 303
+
+    dashboard = await client.get("/")
+    assert "Job post</a>" not in dashboard.text
+    assert "<td>—</td>" in dashboard.text
+
+    detail = await client.get(created.headers["location"])
+    assert "<dt>Job URL</dt>" in detail.text
+    assert 'href="https://' not in detail.text
+
+
+async def test_stage_history_uses_compact_layout_classes_for_multiple_entries(
+    client: httpx2.AsyncClient,
+) -> None:
+    created = await client.post(
+        "/applications",
+        data={"role": "Engineer", "company": "Acme"},
+        follow_redirects=False,
+    )
+    location = created.headers["location"]
+    for stage, timestamp in (
+        ("Viewed", "2099-01-01T09:00:00"),
+        ("Call", "2099-01-02T09:00:00"),
+        ("Interview", "2099-01-03T09:00:00"),
+    ):
+        updated = await client.post(
+            f"{location}/stages",
+            data={"stage": stage, "effective_from": timestamp},
+            follow_redirects=False,
+        )
+        assert updated.status_code == 200
+
+    detail = await client.get(location)
+    assert 'class="stage-history"' in detail.text
+    assert 'class="stage-history-form"' in detail.text
+    assert 'class="stage-history-table"' in detail.text
+    assert "Interview" in detail.text
+
+
+def test_dashboard_styles_define_shared_typography_and_compact_history() -> (
+    None
+):
+    stylesheet = Path("app/static/app.css").read_text()
+    assert ".button, button" in stylesheet
+    assert "font-family: system-ui, sans-serif" in stylesheet
+    assert ".applications-table-header th" in stylesheet
+    assert "vertical-align: middle" in stylesheet
+    assert "white-space: nowrap" in stylesheet
+    assert ".stage-history-table" in stylesheet
+    assert "padding: .35rem .45rem" in stylesheet
+
+
 async def test_dashboard_stage_editor_updates_row(
     client: httpx2.AsyncClient,
 ) -> None:

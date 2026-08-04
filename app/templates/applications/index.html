@@ -8,8 +8,25 @@
   <button class="search-action" type="submit">Search</button>
   {% if q %}<a class="button search-action" href="/">Clear</a>{% endif %}
 </form>
-<div class="table-wrap"><table>
-  <thead><tr><th>Role</th><th>Company</th><th>Payment</th><th>Job URL</th><th>CV</th><th>Recruiter</th><th>Fully remote</th><th>Current stage</th><th>Stage note</th><th>Notes</th><th>Submitted</th><th>Last updated</th></tr></thead>
+<div class="table-wrap">
+  <table class="applications-table">
+    <thead class="applications-table-header">
+      <tr>
+        <th>Role</th>
+        <th>Company</th>
+        <th>Payment</th>
+        <th>Job URL</th>
+        <th>CV</th>
+        <th>Recruiter</th>
+        <th>Fully remote</th>
+        <th>Current stage</th>
+        <th>Stage note</th>
+        <th>Notes</th>
+        <th>Submitted</th>
+        <th>Last updated</th>
+      </tr>
+    </thead>
   <tbody id="applications">{% for application in applications %}{% include 'applications/_application_row.html' %}{% else %}<tr><td colspan="12">{% if q %}No applications match “{{ q }}”.{% else %}No applications yet.{% endif %}</td></tr>{% endfor %}</tbody>
-</table></div>
+  </table>
+</div>
 {% endblock %}

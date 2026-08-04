@@ -12,6 +12,10 @@
   `private/cv/artefacts/<company>/<YYYY-MM-DD> <role>/`.
 - Add dashboard overlays for focused updates to the current stage/stage note
   and application notes, avoiding a trip to the full edit page.
+- Apply a final dashboard visual-consistency pass: use one shared button
+  typography, make all application-table text consistent, keep table headers
+  centred and on one line where the viewport permits, open job-post links in a
+  new tab, and compact the stage-history display to match its update form.
 
 ## Context (from discovery)
 
@@ -66,6 +70,10 @@
 - Add route/template tests for cancel/close controls, non-wrapping dates,
   equal-height search controls, dashboard CV preview actions, and the two
   dashboard editor overlays.
+- Add route/template tests for the job-post external-link attributes and the
+  shared classes used by dashboard table cells, headers, and stage history.
+  Add focused CSS assertions or snapshots, consistent with existing tests, for
+  the shared button typography and compact stage-history presentation.
 - Exercise repository tests for current-stage replacement versus note-only
   edits, ordering, invalid stages, missing applications, and notes clearing.
 - After each task run `uv run pytest`, `uv run ruff check .`,
@@ -122,6 +130,18 @@ the dashboard untouched.
 - Render a dashboard CV action with `data-preview-url` for PDFs and preserve a
   protected download link for supported Word files. Missing or invalid stored
   CVs render as unavailable rather than exposing a raw file URI.
+- Define dashboard typography at the shared table/button selectors rather than
+  per column: all buttons inherit one explicit family and size, while header
+  and body cells share the same explicit family and size. Centre header text,
+  prevent header wrapping at normal desktop widths, and retain horizontal
+  scrolling for constrained viewports.
+- Render external job-post URLs as safe, clearly labelled links with
+  `target="_blank"` and `rel="noopener noreferrer"`. Reduce stage-history
+  padding, gaps, and action-control sizing so it visually matches the compact
+  stage-update form without making the history controls harder to operate.
+- Apply those external-link attributes consistently to both dashboard and
+  detail-page job-post renderings; a route test must prevent the two templates
+  from drifting apart again.
 
 ## What Goes Where
 
@@ -294,7 +314,57 @@ the dashboard untouched.
 - [ ] Manually verify native browser file selection, Finder invocation on macOS,
   dialog focus/keyboard escape, responsive dashboard dates, and PDF viewing.
 
-### Task 7: Update documentation and close the plan
+### Task 7: Normalize dashboard typography, links, and stage-history density
+
+**Files:**
+- Modify: `app/templates/applications/index.html`
+- Modify: `app/templates/applications/_application_row.html`
+- Modify: `app/templates/applications/_stage_history.html`
+- Modify: `app/templates/applications/_stage_editor.html`
+- Modify: `app/static/app.css`
+- Modify: `tests/test_routes.py`
+
+- [x] Establish shared explicit font-family and font-size rules for every
+  button and button-style link, including search, dialog, table-edit, and
+  stage-history controls.
+- [x] Apply one explicit typeface and size to all dashboard application-table
+  body cells (Role, Company, Payment, links, status fields, and dates) while
+  preserving semantic emphasis such as headings and error messages.
+- [x] Centre and align all dashboard table headers; keep each label on one line
+  at normal dashboard widths with `white-space: nowrap` and preserve the
+  existing horizontal-scroll fallback on narrow viewports.
+- [x] Update dashboard job-post URLs to open in a new tab using
+  `target="_blank" rel="noopener noreferrer"`, while retaining accessible link
+  text and safe handling of absent URLs.
+- [x] Make the application-stage history display compact by matching the
+  stage-editor form's control sizing, spacing, and visual density without
+  changing stage data or editor behavior.
+- [x] Write route/template tests for table typography hooks, centred no-wrap
+  headers, dashboard job-post link attributes, and absent-URL behaviour.
+- [x] Write presentation-focused tests or assertions for the common button
+  styling and compact stage-history classes, including initial and multi-entry
+  histories (an application always has an initial stage-history record).
+- [x] Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`,
+  and `uv run mypy app` — all must pass before Task 8.
+
+### Task 8: ➕ Open all application job-post URLs in new tabs
+
+**Files:**
+- Modify: `app/templates/applications/detail.html`
+- Modify: `tests/test_routes.py`
+
+- [x] Add `target="_blank"` and `rel="noopener noreferrer"` to the detail-page
+  job-post URL, matching the dashboard's safe external-link behavior.
+- [x] Preserve the current absent-URL marker and URL escaping in the detail
+  template; do not alter CV-download or internal application navigation links.
+- [x] Extend route/template coverage to assert that the same valid job-post URL
+  has the safe new-tab attributes in both dashboard and detail responses.
+- [x] Add an absent-URL detail-page assertion that proves no external link is
+  rendered when an application has no job URL.
+- [x] Run `uv run pytest`, `uv run ruff check .`, `uv run ruff format --check .`,
+  and `uv run mypy app` — all must pass before Task 9.
+
+### Task 9: Update documentation and close the plan
 
 **Files:**
 - Modify: `README.md` (if user-facing CV storage or supported formats need
@@ -319,6 +389,10 @@ the dashboard untouched.
 - Cancel a blank New application dialog, submit invalid data, and use Escape
   to ensure no trapped or accidental-submit state remains.
 - Test a narrow dashboard viewport to confirm dates stay whole, buttons align,
-  and editable cells remain operable.
+  table headers remain single-line where space permits, and editable cells
+  remain operable.
+- Verify every button uses the same typeface and size, job-post links open in
+  a new tab, table body text is visually consistent, and stage history is as
+  compact as the stage-update form.
 - Preview a PDF from the dashboard, download a DOC/DOCX, and verify a missing
   file fails without revealing an internal path.
