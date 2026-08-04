@@ -4,11 +4,12 @@ JobHunter is a local FastAPI application register with immutable stage history.
 
 ## Run locally
 
-Install dependencies, then start the development server:
+JobHunter requires Python 3.14. Sync the locked dependencies, then start the
+development server:
 
 ```bash
-uv pip install -r requirements.txt
-uv run uvicorn app.main:app --reload
+uv sync --locked
+uv run --locked uvicorn app.main:app --reload
 ```
 
 Open <http://127.0.0.1:8000>. The SQLite database is stored at
@@ -17,9 +18,10 @@ Open <http://127.0.0.1:8000>. The SQLite database is stored at
 Run the checks with:
 
 ```bash
-uv run pytest
-uv run ruff check .
-uv run mypy app
+uv run --locked pytest
+uv run --locked ruff check .
+uv run --locked ruff format --check .
+uv run --locked mypy app
 ```
 
 The job URL is optional, for example when the job description arrived by email.
