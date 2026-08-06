@@ -13,6 +13,16 @@ async def test_health_and_empty_register(client: httpx2.AsyncClient) -> None:
     assert "No applications yet" in (await client.get("/")).text
 
 
+async def test_static_assets_revalidate_on_normal_refresh(
+    client: httpx2.AsyncClient,
+) -> None:
+    stylesheet = await client.get("/static/app.css")
+
+    assert stylesheet.status_code == 200
+    assert stylesheet.headers["cache-control"] == "no-cache"
+    assert ".applications-table" in stylesheet.text
+
+
 async def test_create_view_update_and_stage(client: httpx2.AsyncClient) -> None:
     response = await client.post(
         "/applications",

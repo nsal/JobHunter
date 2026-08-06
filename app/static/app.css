@@ -81,6 +81,7 @@ th { background: #eaf1f8; color: #17212b; }
   overflow: hidden;
   overflow-wrap: anywhere;
   text-align: center;
+  vertical-align: middle;
   white-space: normal;
 }
 .applications-table .application-role-cell,

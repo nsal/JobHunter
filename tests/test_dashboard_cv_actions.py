@@ -74,6 +74,16 @@ async def test_dashboard_table_uses_semantic_alignment_and_font_hooks(
         in stylesheet
     )
     assert (
+        """.applications-table td {
+  height: calc(2.6em + .8rem);
+  min-width: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  text-align: center;
+  vertical-align: middle;"""
+        in stylesheet
+    )
+    assert (
         """.applications-table .application-role-cell,
 .applications-table .application-company-cell,
 .applications-table .application-notes-cell {
