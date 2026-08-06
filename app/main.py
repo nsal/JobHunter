@@ -18,6 +18,7 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.types import Scope
 
 from app.cv_files import (
     CvFileError,
@@ -45,6 +46,16 @@ def preview_text(value: str | None, limit: int = 300) -> str:
 
 templates.env.filters["date_only"] = date_only
 templates.env.filters["preview_text"] = preview_text
+
+
+class NoCacheStaticFiles(StaticFiles):
+    """Serve local static files that browsers revalidate on each refresh."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        """Add the cache policy after the static response is resolved."""
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 def now_value() -> str:
@@ -92,7 +103,11 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
 
     app = FastAPI(title="JobHunter", lifespan=lifespan)
     static_directory = ROOT / "app" / "static"
-    app.mount("/static", StaticFiles(directory=static_directory), name="static")
+    app.mount(
+        "/static",
+        NoCacheStaticFiles(directory=static_directory),
+        name="static",
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:

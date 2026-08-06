@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx2
@@ -10,6 +11,16 @@ async def test_health_and_empty_register(client: httpx2.AsyncClient) -> None:
     response = await client.get("/health")
     assert response.json() == {"status": "ok"}
     assert "No applications yet" in (await client.get("/")).text
+
+
+async def test_static_assets_revalidate_on_normal_refresh(
+    client: httpx2.AsyncClient,
+) -> None:
+    stylesheet = await client.get("/static/app.css")
+
+    assert stylesheet.status_code == 200
+    assert stylesheet.headers["cache-control"] == "no-cache"
+    assert ".applications-table" in stylesheet.text
 
 
 async def test_create_view_update_and_stage(client: httpx2.AsyncClient) -> None:
@@ -239,9 +250,10 @@ async def test_native_cv_upload_storage_and_replacement(
     location = created.headers["location"]
     stored = list(cv_root.rglob("resume.pdf"))
     assert len(stored) == 1
+    upload_date = datetime.now(UTC).date().isoformat()
     assert stored[0].relative_to(cv_root).parts[:2] == (
         "Acme-Europe",
-        "2026-08-04 Engineer",
+        f"{upload_date} Engineer",
     )
     assert (await client.get(f"{location}/cv/preview")).status_code == 200
 
@@ -320,15 +332,16 @@ async def test_dashboard_overlay_search_dates_and_previews(
     location = created.headers["location"]
 
     dashboard = await client.get("/?q=acme")
+    today = datetime.now(UTC).date().isoformat()
     assert "data-open-application-dialog" in dashboard.text
     assert 'value="acme"' in dashboard.text
-    assert "2026-08-04" in dashboard.text
+    assert today in dashboard.text
     assert notes in dashboard.text
     assert ("N" * 300) + "…" not in dashboard.text
     assert 'class="search-action"' in dashboard.text
     assert 'class="button search-action"' in dashboard.text
     assert 'class="date-cell" data-label="Submitted"' in dashboard.text
-    assert 'datetime="2026-08-04T' in dashboard.text
+    assert f'datetime="{today}T' in dashboard.text
 
     form = await client.get("/applications/new", headers={"HX-Request": "true"})
     assert form.status_code == 200
