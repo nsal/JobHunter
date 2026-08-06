@@ -48,7 +48,17 @@ def initialize_database(database_path: str | Path) -> None:
                     CHECK (is_fully_remote IN (0, 1)),
                 notes TEXT,
                 full_jd TEXT NOT NULL CHECK (TRIM(full_jd) != ''),
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                artefact_directory TEXT NOT NULL UNIQUE
+                    CHECK (
+                        TRIM(artefact_directory) != ''
+                        AND artefact_directory NOT LIKE '/%'
+                        AND artefact_directory NOT LIKE '../%'
+                        AND artefact_directory NOT LIKE '%/../%'
+                        AND artefact_directory NOT LIKE '%/..'
+                        AND artefact_directory NOT LIKE '%//%'
+                        AND INSTR(artefact_directory, CHAR(92)) = 0
+                    )
             );
 
             CREATE TABLE IF NOT EXISTS application_stage_history (

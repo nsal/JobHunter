@@ -164,15 +164,15 @@ allowing unchanged assets to use a conditional response.
 **Files:**
 - Modify: `docs/plans/2026-08-06-standardize-dashboard-table-typography-and-alignment.md`
 
-- [ ] Verify at a desktop viewport that Role, Company, and Notes are
+- [x] Verify at a desktop viewport that Role, Company, and Notes are
   left-aligned and all remaining body columns are centered.
-- [ ] Verify at a desktop viewport that each body cell's content is vertically
+- [x] Verify at a desktop viewport that each body cell.s content is vertically
   centered, including multi-line and button content.
-- [ ] Verify that Notes text has the same typeface and size as every other
+- [x] Verify that Notes text has the same typeface and size as every other
   dashboard body cell.
-- [ ] Verify in Safari and a Chromium-based browser that a standard reload
+- [x] Verify in Safari and a Chromium-based browser that a standard reload
   receives the current stylesheet without requiring a hard reload.
-- [ ] Verify below `40rem` that the card layout, labels, editing controls, and
+- [x] Verify below `40rem` that the card layout, labels, editing controls, and
   content readability are unchanged.
 - [x] Run `uv run pytest` and confirm the complete suite passes.
 - [x] Run `uv run ruff check .`, `uv run ruff format --check .`, and
@@ -184,7 +184,7 @@ allowing unchanged assets to use a conditional response.
 - [x] Update README.md only if the dashboard behavior documentation needs to
   describe the new alignment convention.
 - [x] Update AGENTS.md only if the work establishes a reusable project pattern.
-- [ ] Move this plan to `docs/plans/completed/` once implementation and all
+- [x] Move this plan to `docs/plans/completed/ once implementation and all
   verification steps are complete.
 
 ➕ Stabilized two unrelated route tests that had hard-coded the prior calendar

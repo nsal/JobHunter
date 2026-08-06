@@ -6,7 +6,9 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
+from uuid import uuid4
 
+from app.artefacts import allocate_application_directory
 from app.database import STAGES, connect
 
 
@@ -76,11 +78,13 @@ class Repository:
         if not effective_from:
             raise ValueError("Created date is required.")
         with connect(self.database_path) as connection:
+            pending_directory = f"pending/{uuid4().hex}"
             cursor = connection.execute(
                 """INSERT INTO applications (
                     role, company, payment, job_url, is_recruiter,
-                    is_fully_remote, notes, full_jd, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    is_fully_remote, notes, full_jd, created_at,
+                    artefact_directory
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     role,
                     company,
@@ -91,6 +95,7 @@ class Repository:
                     _optional(values.get("notes")),
                     full_jd,
                     effective_from,
+                    pending_directory,
                 ),
             )
             if cursor.lastrowid is None:
@@ -98,6 +103,26 @@ class Repository:
                     "Application insertion did not return an ID."
                 )
             application_id = cursor.lastrowid
+            existing_directories = {
+                str(row["artefact_directory"])
+                for row in connection.execute(
+                    """SELECT artefact_directory FROM applications
+                    WHERE id != ?""",
+                    (application_id,),
+                )
+            }
+            artefact_directory = allocate_application_directory(
+                company,
+                role,
+                effective_from,
+                application_id,
+                existing_directories,
+            )
+            connection.execute(
+                """UPDATE applications SET artefact_directory = ?
+                WHERE id = ?""",
+                (artefact_directory, application_id),
+            )
             connection.execute(
                 """INSERT INTO application_stage_history (
                     application_id, stage, stage_sequence, effective_from,

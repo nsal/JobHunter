@@ -31,6 +31,7 @@ def test_create_starts_assessing_without_a_submission_date(
     assert application["current_stage"] == "Assessing"
     assert application["submitted_date"] is None
     assert application["created_at"] == "2026-01-01T09:00:00"
+    assert application["artefact_directory"] == ("Acme/2026-01-01_Developer")
     assert application["full_jd"] == "Build and maintain software."
     assert application["is_fully_remote"] == 1
     assert application["history"][0]["stage_sequence"] == 1
@@ -90,8 +91,37 @@ def test_update_preserves_jd_created_date_and_history(
     assert updated["notes"] == "Follow up"
     assert updated["full_jd"] == "Build and maintain software."
     assert updated["created_at"] == "2026-01-01T09:00:00"
+    assert updated["artefact_directory"] == "Acme/2026-01-01_Developer"
     assert updated["last_updated_date"] == "2026-01-01T09:00:00"
     assert len(updated["history"]) == 1
+
+
+def test_artefact_directory_handles_collisions_and_stays_stable(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+    repository = Repository(database_path)
+    first = repository.create_application(
+        application_values(company="Société Générale", role="CON"),
+        "2026-01-01T09:00:00",
+    )
+    second = repository.create_application(
+        application_values(company="Société Générale", role="CON"),
+        "2026-01-01T10:00:00",
+    )
+
+    first_directory = repository.get_application(first)["artefact_directory"]
+    second_directory = repository.get_application(second)["artefact_directory"]
+    assert first_directory == "Société-Générale/2026-01-01_CON"
+    assert second_directory == f"{first_directory}_{second}"
+
+    repository.update_application(
+        first,
+        application_values(company="Renamed", role="Principal Engineer"),
+    )
+    assert repository.get_application(first)["artefact_directory"] == (
+        first_directory
+    )
 
 
 def test_explicit_submission_sets_the_first_submission_date(

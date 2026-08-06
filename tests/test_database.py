@@ -27,6 +27,7 @@ def test_schema_contains_fresh_lifecycle_tables(database_path: str) -> None:
     }
     assert "created_at" in columns
     assert "full_jd" in columns
+    assert "artefact_directory" in columns
     assert "cv_path" not in columns
     assert "submission_history" not in names
 
@@ -41,8 +42,9 @@ def test_application_constraints_require_jd_and_created_at(
         pytest.raises(sqlite3.IntegrityError),
     ):
         connection.execute(
-            """INSERT INTO applications(role, company, created_at)
-            VALUES ('Dev', 'Acme', '2026-01-01T00:00:00')"""
+            """INSERT INTO applications(
+                role, company, created_at, artefact_directory
+            ) VALUES ('Dev', 'Acme', '2026-01-01T00:00:00', 'Acme/dev')"""
         )
     with (
         connect(database_path) as connection,
@@ -50,8 +52,9 @@ def test_application_constraints_require_jd_and_created_at(
     ):
         connection.execute(
             """INSERT INTO applications(
-                role, company, full_jd, created_at
-            ) VALUES ('Dev', 'Acme', '  ', '2026-01-01T00:00:00')"""
+                role, company, full_jd, created_at, artefact_directory
+            ) VALUES ('Dev', 'Acme', '  ', '2026-01-01T00:00:00',
+                      'Acme/dev')"""
         )
 
 
@@ -63,9 +66,9 @@ def test_full_jd_cannot_be_changed_in_the_database(
     with connect(database_path) as connection:
         connection.execute(
             """INSERT INTO applications(
-                role, company, full_jd, created_at
+                role, company, full_jd, created_at, artefact_directory
             ) VALUES ('Dev', 'Acme', 'Original JD',
-                      '2026-01-01T00:00:00')"""
+                      '2026-01-01T00:00:00', 'Acme/dev')"""
         )
     with (
         connect(database_path) as connection,
@@ -76,14 +79,42 @@ def test_full_jd_cannot_be_changed_in_the_database(
         )
 
 
+def test_artefact_directory_must_be_unique_and_relative(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+
+    with connect(database_path) as connection:
+        connection.execute(
+            """INSERT INTO applications(
+                role, company, full_jd, created_at, artefact_directory
+            ) VALUES ('Dev', 'Acme', 'JD', '2026-01-01', 'Acme/dev')"""
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """INSERT INTO applications(
+                    role, company, full_jd, created_at, artefact_directory
+                ) VALUES ('Dev', 'Acme', 'JD', '2026-01-01', 'Acme/dev')"""
+            )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """INSERT INTO applications(
+                    role, company, full_jd, created_at, artefact_directory
+                ) VALUES ('Dev', 'Acme', 'JD', '2026-01-01',
+                          '../escape')"""
+            )
+
+
 def test_stage_history_constraints(database_path: str) -> None:
     initialize_database(database_path)
 
     with connect(database_path) as connection:
         connection.execute(
-            """INSERT INTO applications(role, company, full_jd, created_at)
+            """INSERT INTO applications(
+                role, company, full_jd, created_at, artefact_directory
+            )
             VALUES ('Dev', 'Acme', 'Build software.',
-                    '2026-01-01T00:00:00')"""
+                    '2026-01-01T00:00:00', 'Acme/dev')"""
         )
         connection.execute(
             """INSERT INTO application_stage_history(
@@ -123,10 +154,10 @@ def test_schema_accepts_every_lifecycle_stage(database_path: str) -> None:
         for sequence, stage in enumerate(STAGES, start=1):
             connection.execute(
                 """INSERT INTO applications(
-                    role, company, full_jd, created_at
+                    role, company, full_jd, created_at, artefact_directory
                 ) VALUES (?, 'Acme', 'Build software.',
-                          '2026-01-01T00:00:00')""",
-                (stage,),
+                          '2026-01-01T00:00:00', ?)""",
+                (stage, f"Acme/{sequence}"),
             )
             connection.execute(
                 """INSERT INTO application_stage_history(

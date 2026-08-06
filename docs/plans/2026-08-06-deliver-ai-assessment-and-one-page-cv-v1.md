@@ -346,29 +346,33 @@ Task 1 verification: `uv run pytest` — 46 passed.
 - Create: `tests/test_artefacts.py`
 - Modify: `tests/test_repository.py`
 
-- [ ] Add direct bounded dependencies with `uv add` for OpenAI, Pydantic, YAML,
+- [x] Add direct bounded dependencies with `uv add` for OpenAI, Pydantic, YAML,
   Markdown tokenization, DOCX generation, and PDF page inspection; update the
   lockfile.
-- [ ] Define typed tracked settings for OpenAI routing/timeouts, scoring
+- [x] Define typed tracked settings for OpenAI routing/timeouts, scoring
   threshold/taxonomy version, queue polling, heartbeat, lease, and concurrency
   three; reject secrets in tracked YAML.
-- [ ] Validate the active private `profile.md`, `cv-template.docx`, and
+- [x] Validate the active private `profile.md`, `cv-template.docx`, and
   `cv-layout.yaml` paths, size/type limits, and bounded layout values without
   parsing the profile into a normalized index.
-- [ ] Implement stable application artefact-directory allocation, safe segment
+- [x] Implement stable application artefact-directory allocation, safe segment
   normalization, relative storage, containment checks, symlink rejection,
   hashing, and atomic JSON/text/binary writes.
-- [ ] Add the unique relative artefact directory to application persistence and
+- [x] Add the unique relative artefact directory to application persistence and
   keep it stable after role/company edits.
-- [ ] Publish non-private setup/profile/layout/template examples and confirm
+- [x] Publish non-private setup/profile/layout/template examples and confirm
   `private/*` remains ignored.
-- [ ] Write settings/input tests for defaults, overrides, missing/corrupt
+- [x] Write settings/input tests for defaults, overrides, missing/corrupt
   files, unknown providers, invalid timing/layout relationships, and secret-like
   tracked keys.
-- [ ] Write artefact/repository tests for ordinary paths, collisions, Unicode,
+- [x] Write artefact/repository tests for ordinary paths, collisions, Unicode,
   reserved names, stable edits, traversal, unsafe symlinks, atomic-write
   failure, and round trips.
-- [ ] Run `uv run pytest`; record the passing count before task 3.
+- [x] Run `uv run pytest`; record the passing count before task 3.
+
+Task 2 verification: `uv run pytest` — 74 passed. `uv run ruff check .`,
+`uv run ruff format --check .`, `uv run mypy app tests`, and
+`uv lock --check` also passed.
 
 ### Task 3: Define strict AI contracts and deterministic source blocks
 
