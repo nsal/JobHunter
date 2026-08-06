@@ -1,8 +1,8 @@
 <tr id="application-{{ application.id }}">
-  <td data-label="Role" title="{{ application.role }}">
+  <td class="application-role-cell" data-label="Role" title="{{ application.role }}">
     <a class="table-cell-content" href="/applications/{{ application.id }}">{{ application.role }}</a>
   </td>
-  <td data-label="Company" title="{{ application.company }}">
+  <td class="application-company-cell" data-label="Company" title="{{ application.company }}">
     <span class="table-cell-content">{{ application.company }}</span>
   </td>
   <td data-label="Payment" title="{{ application.payment or 'Not supplied' }}">

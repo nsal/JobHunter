@@ -80,7 +80,13 @@ th { background: #eaf1f8; color: #17212b; }
   min-width: 0;
   overflow: hidden;
   overflow-wrap: anywhere;
+  text-align: center;
   white-space: normal;
+}
+.applications-table .application-role-cell,
+.applications-table .application-company-cell,
+.applications-table .application-notes-cell {
+  text-align: left;
 }
 .applications-table .table-cell-content {
   -webkit-box-orient: vertical;
@@ -109,8 +115,10 @@ th { background: #eaf1f8; color: #17212b; }
 .applications-table .application-notes-cell .notes-edit {
   block-size: 2.6em;
   display: block;
+  font: inherit;
   max-block-size: 2.6em;
   overflow: hidden;
+  text-align: inherit;
   width: 100%;
 }
 .applications-table .application-notes-cell .notes-preview {
@@ -127,7 +135,11 @@ th { background: #eaf1f8; color: #17212b; }
   vertical-align: middle;
   white-space: nowrap;
 }
-.applications-table .cv-preview-button { padding: .3rem .5rem; }
+.applications-table .cv-preview-button {
+  font: inherit;
+  padding: .3rem .5rem;
+}
+.applications-table .table-edit { text-align: inherit; }
 .date-cell { min-width: 6.5rem; white-space: nowrap; }
 @media (max-width: 40rem) {
   .applications-table-wrap { overflow: visible; }
@@ -153,6 +165,7 @@ th { background: #eaf1f8; color: #17212b; }
     grid-template-columns: minmax(7rem, 38%) 1fr;
     height: auto;
     overflow: visible;
+    text-align: left;
     text-overflow: clip;
     white-space: normal;
   }
