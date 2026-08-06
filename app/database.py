@@ -6,6 +6,9 @@ import sqlite3
 from pathlib import Path
 
 STAGES = (
+    "Assessing",
+    "Mismatch",
+    "Ready to apply",
     "Submitted",
     "Viewed",
     "Call",
@@ -39,16 +42,16 @@ def initialize_database(database_path: str | Path) -> None:
                 company TEXT NOT NULL,
                 payment TEXT,
                 job_url TEXT,
-                cv_path TEXT,
                 is_recruiter INTEGER NOT NULL DEFAULT 0
                     CHECK (is_recruiter IN (0, 1)),
                 is_fully_remote INTEGER NOT NULL DEFAULT 0
                     CHECK (is_fully_remote IN (0, 1)),
                 notes TEXT,
-                full_jd TEXT
+                full_jd TEXT NOT NULL CHECK (TRIM(full_jd) != ''),
+                created_at TEXT NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS submission_history (
+            CREATE TABLE IF NOT EXISTS application_stage_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 application_id INTEGER NOT NULL REFERENCES applications(id),
                 stage TEXT NOT NULL CHECK (stage IN ({stage_values})),
@@ -62,12 +65,21 @@ def initialize_database(database_path: str | Path) -> None:
             );
 
             CREATE UNIQUE INDEX IF NOT EXISTS one_current_stage_per_application
-            ON submission_history(application_id) WHERE is_current = 1;
+            ON application_stage_history(application_id)
+            WHERE is_current = 1;
 
             CREATE INDEX IF NOT EXISTS history_by_application_sequence
-            ON submission_history(application_id, stage_sequence);
+            ON application_stage_history(application_id, stage_sequence);
 
             CREATE INDEX IF NOT EXISTS current_stage_by_date
-            ON submission_history(effective_from DESC) WHERE is_current = 1;
+            ON application_stage_history(effective_from DESC)
+            WHERE is_current = 1;
+
+            CREATE TRIGGER IF NOT EXISTS immutable_application_jd
+            BEFORE UPDATE OF full_jd ON applications
+            WHEN NEW.full_jd IS NOT OLD.full_jd
+            BEGIN
+                SELECT RAISE(ABORT, 'full_jd is immutable');
+            END;
             """
         )

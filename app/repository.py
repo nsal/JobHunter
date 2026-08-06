@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from app.cv_files import CvFileError, normalize_cv_location
 from app.database import STAGES, connect
 
 
@@ -42,14 +41,6 @@ def _job_url(value: str | None) -> str | None:
     return cleaned
 
 
-def _cv_location(value: str | None) -> str | None:
-    """Return an optional local CV location as a canonical file URI."""
-    try:
-        return normalize_cv_location(value)
-    except CvFileError as error:
-        raise ValueError(str(error)) from error
-
-
 def _safe_job_url(value: Any) -> str | None:
     """Return a stored job URL only when it remains safe to render."""
     if not isinstance(value, str):
@@ -60,20 +51,9 @@ def _safe_job_url(value: Any) -> str | None:
         return None
 
 
-def _safe_cv_location(value: Any) -> str | None:
-    """Return a stored CV location only when it remains safe to render."""
-    if not isinstance(value, str):
-        return None
-    try:
-        return _cv_location(value)
-    except ValueError:
-        return None
-
-
 def _sanitize_stored_links(application: dict[str, Any]) -> dict[str, Any]:
     """Normalize persisted links before exposing them to a template."""
     application["job_url"] = _safe_job_url(application.get("job_url"))
-    application["cv_path"] = _safe_cv_location(application.get("cv_path"))
     return application
 
 
@@ -86,30 +66,31 @@ class Repository:
     def create_application(
         self, values: Mapping[str, Any], effective_from: str
     ) -> int:
-        """Create an application and its initial Submitted history.
+        """Create an application and its initial Assessing history.
 
         The application and stage record are written atomically.
         """
         role = _required(values.get("role"), "Role")
         company = _required(values.get("company"), "Company")
+        full_jd = _required(values.get("full_jd"), "Full job description")
         if not effective_from:
-            raise ValueError("Submitted date is required.")
+            raise ValueError("Created date is required.")
         with connect(self.database_path) as connection:
             cursor = connection.execute(
                 """INSERT INTO applications (
-                    role, company, payment, job_url, cv_path, is_recruiter,
-                    is_fully_remote, notes, full_jd
+                    role, company, payment, job_url, is_recruiter,
+                    is_fully_remote, notes, full_jd, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     role,
                     company,
                     _optional(values.get("payment")),
                     _job_url(values.get("job_url")),
-                    _cv_location(values.get("cv_path")),
                     _flag(values.get("is_recruiter")),
                     _flag(values.get("is_fully_remote")),
                     _optional(values.get("notes")),
-                    _optional(values.get("full_jd")),
+                    full_jd,
+                    effective_from,
                 ),
             )
             if cursor.lastrowid is None:
@@ -118,10 +99,10 @@ class Repository:
                 )
             application_id = cursor.lastrowid
             connection.execute(
-                """INSERT INTO submission_history (
+                """INSERT INTO application_stage_history (
                     application_id, stage, stage_sequence, effective_from,
                     is_current
-                ) VALUES (?, 'Submitted', 1, ?, 1)""",
+                ) VALUES (?, 'Assessing', 1, ?, 1)""",
                 (application_id, effective_from),
             )
         return application_id
@@ -144,13 +125,15 @@ class Repository:
                 """SELECT a.*, h.stage AS current_stage,
                     h.stage_description AS current_stage_description,
                     h.effective_from AS last_updated_date,
-                    submitted.effective_from AS submitted_date
+                    (SELECT submitted.effective_from
+                     FROM application_stage_history AS submitted
+                     WHERE submitted.application_id = a.id
+                       AND submitted.stage = 'Submitted'
+                     ORDER BY submitted.stage_sequence
+                     LIMIT 1) AS submitted_date
                 FROM applications AS a
-                JOIN submission_history AS h
+                JOIN application_stage_history AS h
                   ON h.application_id = a.id AND h.is_current = 1
-                JOIN submission_history AS submitted
-                  ON submitted.application_id = a.id
-                 AND submitted.stage_sequence = 1
                 """
                 + where
                 + """
@@ -166,20 +149,23 @@ class Repository:
                 """SELECT a.*, h.stage AS current_stage,
                     h.stage_description AS current_stage_description,
                     h.effective_from AS last_updated_date,
-                    submitted.effective_from AS submitted_date
+                    (SELECT submitted.effective_from
+                     FROM application_stage_history AS submitted
+                     WHERE submitted.application_id = a.id
+                       AND submitted.stage = 'Submitted'
+                     ORDER BY submitted.stage_sequence
+                     LIMIT 1) AS submitted_date
                 FROM applications AS a
-                JOIN submission_history AS h
+                JOIN application_stage_history AS h
                   ON h.application_id = a.id AND h.is_current = 1
-                JOIN submission_history AS submitted
-                  ON submitted.application_id = a.id
-                 AND submitted.stage_sequence = 1
                 WHERE a.id = ?""",
                 (application_id,),
             ).fetchone()
             if row is None:
                 raise ApplicationNotFoundError("Application not found.")
             history = connection.execute(
-                """SELECT * FROM submission_history WHERE application_id = ?
+                """SELECT * FROM application_stage_history
+                WHERE application_id = ?
                 ORDER BY stage_sequence DESC""",
                 (application_id,),
             ).fetchall()
@@ -196,18 +182,16 @@ class Repository:
         with connect(self.database_path) as connection:
             cursor = connection.execute(
                 """UPDATE applications SET role = ?, company = ?, payment = ?,
-                    job_url = ?, cv_path = ?, is_recruiter = ?,
-                    is_fully_remote = ?, notes = ?, full_jd = ? WHERE id = ?""",
+                    job_url = ?, is_recruiter = ?, is_fully_remote = ?,
+                    notes = ? WHERE id = ?""",
                 (
                     role,
                     company,
                     _optional(values.get("payment")),
                     _job_url(values.get("job_url")),
-                    _cv_location(values.get("cv_path")),
                     _flag(values.get("is_recruiter")),
                     _flag(values.get("is_fully_remote")),
                     _optional(values.get("notes")),
-                    _optional(values.get("full_jd")),
                     application_id,
                 ),
             )
@@ -234,8 +218,6 @@ class Repository:
         """Close the current stage and append a new current stage atomically."""
         if not stage:
             raise ValueError("Choose a new stage.")
-        if stage == "Submitted":
-            raise ValueError("Submitted is created with the application.")
         if stage not in STAGES:
             raise ValueError("Choose a valid stage.")
         if not effective_from:
@@ -243,7 +225,7 @@ class Repository:
         with connect(self.database_path) as connection:
             current = connection.execute(
                 """SELECT id, effective_from, stage_sequence
-                FROM submission_history
+                FROM application_stage_history
                 WHERE application_id = ? AND is_current = 1""",
                 (application_id,),
             ).fetchone()
@@ -259,12 +241,12 @@ class Repository:
                     "Effective-from date cannot precede the current stage."
                 )
             connection.execute(
-                """UPDATE submission_history
+                """UPDATE application_stage_history
                 SET effective_to = ?, is_current = 0 WHERE id = ?""",
                 (effective_from, current["id"]),
             )
             connection.execute(
-                """INSERT INTO submission_history (
+                """INSERT INTO application_stage_history (
                     application_id, stage, stage_sequence, stage_description,
                     effective_from, is_current
                 ) VALUES (?, ?, ?, ?, ?, 1)""",
@@ -289,7 +271,7 @@ class Repository:
             raise ValueError("Choose a valid stage.")
         with connect(self.database_path) as connection:
             current = connection.execute(
-                """SELECT id, stage FROM submission_history
+                """SELECT id, stage FROM application_stage_history
                 WHERE application_id = ? AND is_current = 1""",
                 (application_id,),
             ).fetchone()
@@ -302,7 +284,8 @@ class Repository:
                 raise ValueError("Application has no current stage.")
             if current["stage"] == stage:
                 connection.execute(
-                    "UPDATE submission_history SET stage_description = ? WHERE id = ?",
+                    """UPDATE application_stage_history
+                    SET stage_description = ? WHERE id = ?""",
                     (_optional(description), current["id"]),
                 )
                 return

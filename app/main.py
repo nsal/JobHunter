@@ -7,11 +7,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import (
-    FileResponse,
     HTMLResponse,
     RedirectResponse,
     Response,
@@ -20,11 +19,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.types import Scope
 
-from app.cv_files import (
-    CvFileError,
-    cv_path,
-)
-from app.cv_uploads import remove_cv_upload, store_cv_upload
 from app.database import STAGES, initialize_database
 from app.repository import ApplicationNotFoundError, Repository
 
@@ -68,7 +62,6 @@ def form_values(
     company: str,
     payment: str | None,
     job_url: str | None,
-    cv_path: str | None,
     is_recruiter: str | None,
     is_fully_remote: str | None,
     notes: str | None,
@@ -80,7 +73,6 @@ def form_values(
         "company": company,
         "payment": payment,
         "job_url": job_url,
-        "cv_path": cv_path,
         "is_recruiter": is_recruiter,
         "is_fully_remote": is_fully_remote,
         "notes": notes,
@@ -142,14 +134,12 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         )
 
     @app.post("/applications", response_class=HTMLResponse)
-    async def create_application(
+    def create_application(
         request: Request,
         role: str = Form(""),
         company: str = Form(""),
         payment: str | None = Form(None),
         job_url: str | None = Form(None),
-        cv_path: str | None = Form(None),
-        cv_upload: Annotated[UploadFile | None, File()] = None,
         is_recruiter: str | None = Form(None),
         is_fully_remote: str | None = Form(None),
         notes: str | None = Form(None),
@@ -160,25 +150,16 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
             company,
             payment,
             job_url,
-            cv_path,
             is_recruiter,
             is_fully_remote,
             notes,
             full_jd,
         )
-        uploaded_location: str | None = None
         try:
-            if cv_upload is not None:
-                uploaded_location = await store_cv_upload(
-                    cv_upload, company, role
-                )
-                if uploaded_location:
-                    values["cv_path"] = uploaded_location
             application_id = request.app.state.repository.create_application(
                 values, now_value()
             )
-        except (CvFileError, ValueError) as error:
-            remove_cv_upload(uploaded_location)
+        except ValueError as error:
             context = {
                 "application": values,
                 "action": "/applications",
@@ -220,93 +201,35 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
             {"application": application, "stages": STAGES, "now": now_value()},
         )
 
-    def application_cv(application_id: int, request: Request) -> Path:
-        try:
-            application = request.app.state.repository.get_application(
-                application_id
-            )
-        except ApplicationNotFoundError as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
-        location = application.get("cv_path")
-        if not isinstance(location, str):
-            raise HTTPException(status_code=404, detail="CV file not found.")
-        try:
-            return cv_path(location)
-        except CvFileError as error:
-            raise HTTPException(
-                status_code=404, detail="CV file not found."
-            ) from error
-
-    @app.get("/applications/{application_id}/cv/preview")
-    def preview_cv(application_id: int, request: Request) -> FileResponse:
-        path = application_cv(application_id, request)
-        if path.suffix.lower() != ".pdf":
-            raise HTTPException(
-                status_code=422, detail="Only PDFs can be previewed."
-            )
-        return FileResponse(
-            path,
-            media_type="application/pdf",
-            filename=path.name,
-            content_disposition_type="inline",
-        )
-
-    @app.get("/applications/{application_id}/cv/download")
-    def download_cv(application_id: int, request: Request) -> FileResponse:
-        path = application_cv(application_id, request)
-        media_type = (
-            "application/msword"
-            if path.suffix.lower() == ".doc"
-            else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
-        return FileResponse(path, media_type=media_type, filename=path.name)
-
     @app.post("/applications/{application_id}", response_class=HTMLResponse)
-    async def update_application(
+    def update_application(
         application_id: int,
         request: Request,
         role: str = Form(""),
         company: str = Form(""),
         payment: str | None = Form(None),
         job_url: str | None = Form(None),
-        cv_path: str | None = Form(None),
-        cv_upload: Annotated[UploadFile | None, File()] = None,
         is_recruiter: str | None = Form(None),
         is_fully_remote: str | None = Form(None),
         notes: str | None = Form(None),
-        full_jd: str | None = Form(None),
     ) -> Response:
         values = form_values(
             role,
             company,
             payment,
             job_url,
-            cv_path,
             is_recruiter,
             is_fully_remote,
             notes,
-            full_jd,
+            None,
         )
-        uploaded_location: str | None = None
         try:
-            existing = request.app.state.repository.get_application(
-                application_id
-            )
-            if cv_upload is not None:
-                uploaded_location = await store_cv_upload(
-                    cv_upload, company, role
-                )
-                if uploaded_location:
-                    values["cv_path"] = uploaded_location
-            if not values["cv_path"]:
-                values["cv_path"] = existing.get("cv_path")
             request.app.state.repository.update_application(
                 application_id, values
             )
         except ApplicationNotFoundError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
-        except (CvFileError, ValueError) as error:
-            remove_cv_upload(uploaded_location)
+        except ValueError as error:
             values["id"] = application_id
             context = {
                 "application": values,

@@ -14,19 +14,6 @@
          rel="noopener noreferrer">URL</a>
     {% else %}<span class="table-cell-content">—</span>{% endif %}
   </td>
-  <td data-label="CV">
-    {% if application.cv_path %}
-      {% if (application.cv_path|lower).endswith('.pdf') %}
-        <span class="table-cell-content"><button type="button"
-              class="cv-preview-button"
-              data-preview-url="/applications/{{ application.id }}/cv/preview">
-          Preview CV
-        </button></span>
-      {% else %}
-        <a class="table-cell-content" href="/applications/{{ application.id }}/cv/download">Download CV</a>
-      {% endif %}
-    {% else %}<span class="table-cell-content">—</span>{% endif %}
-  </td>
   <td data-label="Agency"><span class="table-cell-content">{{ 'Yes' if application.is_recruiter else 'No' }}</span></td>
   <td data-label="Fully remote"><span class="table-cell-content">{{ 'Yes' if application.is_fully_remote else 'No' }}</span></td>
   <td data-label="Stage"
