@@ -507,28 +507,36 @@ passed.
 - Create: `app/ai/instructions/cv-generator.md`
 - Create: `app/cv_generations.py`
 - Modify: `app/database.py`
+- ➕ Modify: `app/settings.py`
+- ➕ Modify: `examples/profile/cv-layout.example.yaml`
 - Create: `tests/test_cv_generator.py`
 - Create: `tests/test_word_writer.py`
+- ➕ Modify: `tests/test_database.py`
 
-- [ ] Build one bounded CV request from the validated assessment, current
+- [x] Build one bounded CV request from the validated assessment, current
   profile blocks, application role, and allowed evidence only.
-- [ ] Validate claim-level evidence references and reject fabricated identity,
+- [x] Validate claim-level evidence references and reject fabricated identity,
   titles, dates, credentials, skills, metrics, or confidential wording.
-- [ ] Persist immutable generation metadata and atomic `cv-content.json` under
+- [x] Persist immutable generation metadata and atomic `cv-content.json` under
   a generation-specific directory.
-- [ ] Parse and validate the private template/layout settings, then render
+- [x] Parse and validate the private template/layout settings, then render
   CvContent deterministically without rewriting its text.
-- [ ] Apply configured page size, margins, styles, fonts, spacing, bullets,
+- [x] Apply configured page size, margins, styles, fonts, spacing, bullets,
   links, section order, and safe document metadata.
-- [ ] Produce an atomic candidate named
+- [x] Produce an atomic candidate named
   `<First Name> <Last Name> - <Job Title>.docx` from profile-cited identity and
   the application role.
-- [ ] Write generation tests for evidence-grounded selection, role targeting,
+- [x] Write generation tests for evidence-grounded selection, role targeting,
   safe filenames, allowed metrics/titles, and output metadata.
-- [ ] Write generator/writer error tests for unsupported claims, unsafe names,
+- [x] Write generator/writer error tests for unsupported claims, unsafe names,
   changed profile hash, malformed/corrupt template or YAML, missing styles,
   unavailable fonts, conflicting settings, and unsafe output paths.
-- [ ] Run `uv run pytest`; record the passing count before task 7.
+- [x] Run `uv run pytest`; record the passing count before task 7.
+
+Task 6 verification: `uv run pytest` — 211 passed. `uv run ruff check .`,
+`uv run ruff format --check .`, `uv run mypy app tests scripts`, `uv run
+python scripts/generate_ai_schemas.py --check`, `uv lock --check`, and `git
+diff --check` also passed.
 
 ### Task 7: Verify DOCX pagination through Microsoft Word
 

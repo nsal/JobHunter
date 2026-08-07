@@ -25,6 +25,7 @@ def test_schema_contains_fresh_lifecycle_tables(database_path: str) -> None:
         "application_stage_history",
         "assessments",
         "consents",
+        "cv_generations",
         "sqlite_sequence",
     }
     assert "created_at" in columns

@@ -21,3 +21,11 @@ styles:
   bullet_indent_inches: 0.2
 output:
   filename: Tailored CV.docx
+section_order:
+  - summary
+  - skills
+  - experience
+  - projects
+  - education
+  - certifications
+  - additional
