@@ -1,0 +1,306 @@
+{
+  "$defs": {
+    "CategoryAlignment": {
+      "description": "Bounded qualitative input to deterministic category scoring.",
+      "enum": [
+        "strong",
+        "matched",
+        "partial",
+        "gap",
+        "unknown",
+        "not_applicable"
+      ],
+      "title": "CategoryAlignment",
+      "type": "string"
+    },
+    "CitedRequirement": {
+      "additionalProperties": false,
+      "description": "One bounded job requirement cited to source JD blocks.",
+      "properties": {
+        "jd_block_ids": {
+          "items": {
+            "pattern": "^jd-[0-9]{4}$",
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Jd Block Ids",
+          "type": "array"
+        },
+        "mandatory": {
+          "title": "Mandatory",
+          "type": "boolean"
+        },
+        "requirement_id": {
+          "pattern": "^req-[0-9]{3}$",
+          "title": "Requirement Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 600,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "requirement_id",
+        "text",
+        "mandatory",
+        "jd_block_ids"
+      ],
+      "title": "CitedRequirement",
+      "type": "object"
+    },
+    "EvidenceMatch": {
+      "additionalProperties": false,
+      "description": "Profile evidence and classification for exactly one requirement.",
+      "properties": {
+        "classification": {
+          "$ref": "#/$defs/RequirementMatch"
+        },
+        "profile_block_ids": {
+          "items": {
+            "pattern": "^profile-[0-9]{4}$",
+            "type": "string"
+          },
+          "maxItems": 12,
+          "title": "Profile Block Ids",
+          "type": "array"
+        },
+        "rationale": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "requirement_id": {
+          "pattern": "^req-[0-9]{3}$",
+          "title": "Requirement Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "requirement_id",
+        "classification",
+        "profile_block_ids",
+        "rationale"
+      ],
+      "title": "EvidenceMatch",
+      "type": "object"
+    },
+    "HardGateAssessment": {
+      "additionalProperties": false,
+      "description": "Cited status for one supported hard-gate dimension.",
+      "properties": {
+        "gate": {
+          "$ref": "#/$defs/HardGateKind"
+        },
+        "jd_block_ids": {
+          "items": {
+            "pattern": "^jd-[0-9]{4}$",
+            "type": "string"
+          },
+          "maxItems": 12,
+          "title": "Jd Block Ids",
+          "type": "array"
+        },
+        "profile_block_ids": {
+          "items": {
+            "pattern": "^profile-[0-9]{4}$",
+            "type": "string"
+          },
+          "maxItems": 12,
+          "title": "Profile Block Ids",
+          "type": "array"
+        },
+        "rationale": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "requirement_ids": {
+          "items": {
+            "pattern": "^req-[0-9]{3}$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Requirement Ids",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/HardGateStatus"
+        }
+      },
+      "required": [
+        "gate",
+        "status",
+        "requirement_ids",
+        "jd_block_ids",
+        "profile_block_ids",
+        "rationale"
+      ],
+      "title": "HardGateAssessment",
+      "type": "object"
+    },
+    "HardGateKind": {
+      "description": "Explicit contradictions that can deterministically block a match.",
+      "enum": [
+        "salary_location",
+        "remote_policy",
+        "work_authorization",
+        "security_clearance",
+        "excluded_business"
+      ],
+      "title": "HardGateKind",
+      "type": "string"
+    },
+    "HardGateStatus": {
+      "description": "Model-extracted fact relation; only conflict is a failed gate.",
+      "enum": [
+        "no_conflict",
+        "conflict",
+        "unknown",
+        "not_applicable"
+      ],
+      "title": "HardGateStatus",
+      "type": "string"
+    },
+    "RequirementMatch": {
+      "description": "Evidence-level match classifications returned by the model.",
+      "enum": [
+        "matched",
+        "partial",
+        "gap",
+        "unknown"
+      ],
+      "title": "RequirementMatch",
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "description": "Published structured-output schema versions.",
+      "enum": [
+        "v1"
+      ],
+      "title": "SchemaVersion",
+      "type": "string"
+    },
+    "SupportingCategory": {
+      "description": "Stable v1 dimensions later consumed by deterministic scoring.",
+      "enum": [
+        "core_skills",
+        "relevant_experience",
+        "domain_knowledge",
+        "responsibilities",
+        "qualifications"
+      ],
+      "title": "SupportingCategory",
+      "type": "string"
+    },
+    "SupportingCategoryAssessment": {
+      "additionalProperties": false,
+      "description": "Qualitative evidence for one fixed supporting-score category.",
+      "properties": {
+        "alignment": {
+          "$ref": "#/$defs/CategoryAlignment"
+        },
+        "category": {
+          "$ref": "#/$defs/SupportingCategory"
+        },
+        "profile_block_ids": {
+          "items": {
+            "pattern": "^profile-[0-9]{4}$",
+            "type": "string"
+          },
+          "maxItems": 24,
+          "title": "Profile Block Ids",
+          "type": "array"
+        },
+        "rationale": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "requirement_ids": {
+          "items": {
+            "pattern": "^req-[0-9]{3}$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Requirement Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "category",
+        "alignment",
+        "requirement_ids",
+        "profile_block_ids",
+        "rationale"
+      ],
+      "title": "SupportingCategoryAssessment",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Complete provider output before deterministic validation and scoring.",
+  "properties": {
+    "analysis": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Analysis",
+      "type": "string"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/EvidenceMatch"
+      },
+      "maxItems": 100,
+      "minItems": 1,
+      "title": "Evidence",
+      "type": "array"
+    },
+    "hard_gates": {
+      "items": {
+        "$ref": "#/$defs/HardGateAssessment"
+      },
+      "maxItems": 5,
+      "minItems": 5,
+      "title": "Hard Gates",
+      "type": "array"
+    },
+    "requirements": {
+      "items": {
+        "$ref": "#/$defs/CitedRequirement"
+      },
+      "maxItems": 100,
+      "minItems": 1,
+      "title": "Requirements",
+      "type": "array"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion"
+    },
+    "supporting_categories": {
+      "items": {
+        "$ref": "#/$defs/SupportingCategoryAssessment"
+      },
+      "maxItems": 5,
+      "minItems": 5,
+      "title": "Supporting Categories",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "requirements",
+    "evidence",
+    "supporting_categories",
+    "hard_gates",
+    "analysis"
+  ],
+  "title": "AssessmentResult",
+  "type": "object"
+}

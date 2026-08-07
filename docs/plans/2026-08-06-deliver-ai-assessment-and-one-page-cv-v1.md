@@ -382,27 +382,44 @@ Task 2 verification: `uv run pytest` — 74 passed. `uv run ruff check .`,
 - Create: `app/ai/source_blocks.py`
 - Create: `app/ai/schemas/v1/assessment-result.json`
 - Create: `app/ai/schemas/v1/cv-content.json`
+- Create: `scripts/__init__.py`
 - Create: `scripts/generate_ai_schemas.py`
 - Create: `tests/test_ai_schemas.py`
 - Create: `tests/test_source_blocks.py`
 
-- [ ] Define strict, versioned Pydantic models for cited requirements,
+- [x] Define strict, versioned Pydantic models for cited requirements,
   evidence matches, supporting categories, hard gates, `AssessmentResult`, CV
   sections/claims, and `CvContent`.
-- [ ] Forbid extra fields, bound all text/collections, use stable enums, and
+- [x] Forbid extra fields, bound all text/collections, use stable enums, and
   model JD/profile references explicitly.
-- [ ] Deterministically tokenize Markdown and plain JD text into bounded blocks
+- [x] Deterministically tokenize Markdown and plain JD text into bounded blocks
   with stable IDs, order, source kind, and content hashes.
-- [ ] Generate and commit versioned JSON Schemas and add a `--check` mode that
+- [x] Generate and commit versioned JSON Schemas and add a `--check` mode that
   fails on model/schema drift.
-- [ ] Implement cross-record validation for duplicate/dangling requirement,
+- [x] Implement cross-record validation for duplicate/dangling requirement,
   block, evidence, and CV-claim references.
-- [ ] Write schema/block tests for representative valid results, stable block
+- [x] Write schema/block tests for representative valid results, stable block
   IDs/hashes, headings, tables, lists, long content, and round trips.
-- [ ] Write error tests for extra fields, invalid enums, duplicate/dangling
+- [x] Write error tests for extra fields, invalid enums, duplicate/dangling
   references, malformed UTF-8, and oversized inputs/outputs.
-- [ ] Run the schema drift check and `uv run pytest`; record results before
+- [x] Run the schema drift check and `uv run pytest`; record results before
   task 4.
+
+Task 3 verification: `uv run pytest` — 100 passed. `uv run python
+scripts/generate_ai_schemas.py --check`, `uv run ruff check .`, `uv run ruff
+format --check .`, `uv run mypy app tests scripts`, and `uv lock --check` also
+passed.
+
+Post-review hardening verification: `uv run pytest` — 120 passed. `uv run
+pytest tests/test_ai_schemas.py`, `uv run pytest tests/test_source_blocks.py`,
+`uv run python scripts/generate_ai_schemas.py --check`, `uv run ruff check .`,
+`uv run ruff format --check .`, `uv run mypy app tests scripts`, `uv lock
+--check`, and `git diff --check` also passed.
+
+Follow-up review verification: Unicode separators are also preserved at bounded
+source-block split positions. `uv run pytest` — 127 passed; the 24-test focused
+source-block suite, schema drift check, Ruff, mypy, lockfile, and Git whitespace
+checks also passed.
 
 ### Task 4: Implement the OpenAI structured-generation adapter and consent
 
