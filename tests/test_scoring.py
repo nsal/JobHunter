@@ -84,6 +84,22 @@ def test_category_arithmetic_and_threshold_boundary_are_inclusive() -> None:
     assert score.outcome is AssessmentOutcome.MATCHED
 
 
+def test_threshold_comparison_uses_persisted_precision() -> None:
+    result = assessment_result(
+        alignments={
+            category: CategoryAlignment.MATCHED
+            for category in SupportingCategory
+        }
+    )
+
+    score = score_assessment(result, Decimal("80.004"), V1_TAXONOMY)
+
+    assert score.final_score == Decimal("80.00")
+    assert score.threshold == Decimal("80.00")
+    assert score.meets_threshold is True
+    assert score.outcome is AssessmentOutcome.MATCHED
+
+
 def test_rounding_is_decimal_half_up_and_stable() -> None:
     thirds = AssessmentTaxonomy(
         version="v-test",

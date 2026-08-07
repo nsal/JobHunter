@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
@@ -111,6 +113,25 @@ def assessment_count(database_path: str) -> int:
         return int(
             connection.execute("SELECT COUNT(*) FROM assessments").fetchone()[0]
         )
+
+
+def test_assessment_repository_imports_in_a_fresh_process() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from app.assessments import AssessmentRepository; "
+                "from app.assessment import AssessmentService"
+            ),
+        ],
+        cwd=Path(__file__).resolve().parent.parent,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
 
 
 def test_matched_assessment_is_grounded_scored_and_persisted(
@@ -346,6 +367,39 @@ def test_atomic_write_failure_leaves_no_assessment_or_partial_file(
     assert assessment_count(database_path) == 0
     assert list(store.root.rglob("*.json")) == []
     assert list(store.root.rglob("*.tmp-*")) == []
+
+
+def test_profile_change_during_writes_rejects_stale_assessment(
+    database_path: str, tmp_path: Path
+) -> None:
+    initialize_database(database_path)
+    application_id = create_application(database_path)
+    profile_path = tmp_path / "profile.md"
+    replacements = 0
+
+    def change_profile_on_first_replace(
+        source: os.PathLike[str], target: os.PathLike[str]
+    ) -> None:
+        nonlocal replacements
+        replacements += 1
+        if replacements == 1:
+            profile_path.write_text(
+                "# Example Person\n\nChanged profile.", encoding="utf-8"
+            )
+        os.replace(source, target)
+
+    store = ArtefactStore(
+        tmp_path / "artefacts", replace=change_profile_on_first_replace
+    )
+    service, _, _, _ = build_service(
+        database_path, tmp_path, assessment_result(), store=store
+    )
+
+    with pytest.raises(AssessmentInputChangedError, match="inputs changed"):
+        service.execute(application_id, "2026-08-07T10:00:00+00:00")
+
+    assert assessment_count(database_path) == 0
+    assert list(store.root.rglob("*.json")) == []
 
 
 def test_completed_assessment_rows_are_database_immutable(

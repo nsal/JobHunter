@@ -117,6 +117,7 @@ def score_assessment(
     threshold_value = Decimal(str(threshold))
     if not Decimal(0) <= threshold_value <= Decimal(100):
         raise ValueError("assessment threshold must be between 0 and 100")
+    threshold_value = _round(threshold_value)
 
     categories = {item.category: item for item in result.supporting_categories}
     if set(categories) != set(SupportingCategory):
@@ -188,7 +189,7 @@ def score_assessment(
         supporting_alignment=supporting_alignment,
         mandatory_coverage=mandatory_coverage,
         final_score=final_score,
-        threshold=_round(threshold_value),
+        threshold=threshold_value,
         meets_threshold=meets_threshold,
         all_mandatory_matched=all_mandatory_matched,
         category_scores=category_scores,

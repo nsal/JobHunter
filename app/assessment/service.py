@@ -178,17 +178,6 @@ class AssessmentService:
             generated.value, jd_blocks, profile_blocks
         )
 
-        current_application = self._repository.get_application(application_id)
-        current_profile_sha256 = sha256_bytes(self._profile_path.read_bytes())
-        if (
-            current_profile_sha256 != profile_sha256
-            or _hash_text(current_application.full_jd) != jd_sha256
-            or current_application.artefact_directory
-            != application.artefact_directory
-            or current_application.current_stage != "Assessing"
-        ):
-            raise AssessmentInputChangedError
-
         score = score_assessment(
             generated.value,
             self._settings.scoring.threshold,
@@ -213,6 +202,20 @@ class AssessmentService:
             written.append(result_path)
             self._artefacts.write_json(analysis_path, analysis_document)
             written.append(analysis_path)
+            current_application = self._repository.get_application(
+                application_id
+            )
+            current_profile_sha256 = sha256_bytes(
+                self._profile_path.read_bytes()
+            )
+            if (
+                current_profile_sha256 != profile_sha256
+                or _hash_text(current_application.full_jd) != jd_sha256
+                or current_application.artefact_directory
+                != application.artefact_directory
+                or current_application.current_stage != "Assessing"
+            ):
+                raise AssessmentInputChangedError
             completed = CompletedAssessment(
                 assessment_id=assessment_id,
                 application_id=application_id,

@@ -493,7 +493,7 @@ scripts/generate_ai_schemas.py --check`, `uv lock --check`, and `git diff
   inputs, provider errors, repair exhaustion, and atomic-write failure.
 - [x] Run `uv run pytest`; record the passing count before task 6.
 
-Task 5 verification: `uv run pytest` — 192 passed. `uv run ruff check .`,
+Task 5 verification: `uv run pytest` — 195 passed. `uv run ruff check .`,
 `uv run ruff format --check .`, and `uv run mypy app tests scripts` also
 passed.
 
