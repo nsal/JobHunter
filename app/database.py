@@ -74,6 +74,20 @@ def initialize_database(database_path: str | Path) -> None:
                 CHECK (effective_to IS NULL OR effective_to >= effective_from)
             );
 
+            CREATE TABLE IF NOT EXISTS consents (
+                consent_key TEXT PRIMARY KEY
+                    CHECK (TRIM(consent_key) != ''),
+                granted_at TEXT NOT NULL CHECK (TRIM(granted_at) != ''),
+                revoked_at TEXT,
+                CHECK (
+                    revoked_at IS NULL
+                    OR (
+                        TRIM(revoked_at) != ''
+                        AND revoked_at >= granted_at
+                    )
+                )
+            );
+
             CREATE UNIQUE INDEX IF NOT EXISTS one_current_stage_per_application
             ON application_stage_history(application_id)
             WHERE is_current = 1;

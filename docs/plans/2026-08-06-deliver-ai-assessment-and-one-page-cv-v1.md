@@ -432,25 +432,31 @@ checks also passed.
 - Modify: `app/database.py`
 - Create: `tests/test_ai_providers.py`
 - Create: `tests/test_consent.py`
+- ➕ Modify: `tests/test_database.py`
 
-- [ ] Define a narrow typed structured-generation request/result protocol with
+- [x] Define a narrow typed structured-generation request/result protocol with
   model, schema, timeout, usage, response identifiers, and sanitized metadata.
-- [ ] Implement the OpenAI adapter using environment-only credentials and the
+- [x] Implement the OpenAI adapter using environment-only credentials and the
   configured model/options without leaking provider code into domain services.
-- [ ] Support schema-enforced output, local validation, and exactly one repair
+- [x] Support schema-enforced output, local validation, and exactly one repair
   request containing bounded validation errors.
-- [ ] Normalize timeout, rate-limit, connection, server, authentication, and
+- [x] Normalize timeout, rate-limit, connection, server, authentication, and
   invalid-output failures into retryable or deterministic domain errors.
-- [ ] Add private-database consent storage and enforce the current one-time
+- [x] Add private-database consent storage and enforce the current one-time
   OpenAI profile-sharing acknowledgement before any profile-bearing request.
-- [ ] Redact credentials, profile/JD bodies, complete prompts, and raw provider
+- [x] Redact credentials, profile/JD bodies, complete prompts, and raw provider
   responses from logs, exceptions, and persisted errors.
-- [ ] Write mocked provider tests for native success, repaired success,
+- [x] Write mocked provider tests for native success, repaired success,
   metadata, timeout/rate/server errors, missing credentials, one repair only,
   and redaction.
-- [ ] Write consent tests for absent, granted, revoked, and repeated
+- [x] Write consent tests for absent, granted, revoked, and repeated
   acknowledgement behavior.
-- [ ] Run `uv run pytest`; record the passing count before task 5.
+- [x] Run `uv run pytest`; record the passing count before task 5.
+
+Task 4 verification: `uv run pytest` — 157 passed. `uv run ruff check .`,
+`uv run ruff format --check .`, `uv run mypy app tests scripts`, `uv run python
+scripts/generate_ai_schemas.py --check`, `uv lock --check`, and `git diff
+--check` also passed.
 
 ### Task 5: Implement deterministic scoring and assessment execution
 

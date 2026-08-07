@@ -23,6 +23,7 @@ def test_schema_contains_fresh_lifecycle_tables(database_path: str) -> None:
     assert names == {
         "applications",
         "application_stage_history",
+        "consents",
         "sqlite_sequence",
     }
     assert "created_at" in columns
