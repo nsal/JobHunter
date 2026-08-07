@@ -88,6 +88,59 @@ def initialize_database(database_path: str | Path) -> None:
                 )
             );
 
+            CREATE TABLE IF NOT EXISTS assessments (
+                id TEXT PRIMARY KEY CHECK (TRIM(id) != ''),
+                application_id INTEGER NOT NULL REFERENCES applications(id),
+                outcome TEXT NOT NULL CHECK (outcome IN (
+                    'matched', 'skill_mismatch',
+                    'salary_location_mismatch', 'other_mismatch'
+                )),
+                final_score REAL NOT NULL CHECK (
+                    final_score >= 0 AND final_score <= 100
+                ),
+                supporting_alignment REAL NOT NULL CHECK (
+                    supporting_alignment >= 0
+                    AND supporting_alignment <= 100
+                ),
+                mandatory_coverage REAL NOT NULL CHECK (
+                    mandatory_coverage >= 0 AND mandatory_coverage <= 100
+                ),
+                threshold REAL NOT NULL CHECK (
+                    threshold >= 0 AND threshold <= 100
+                ),
+                all_mandatory_matched INTEGER NOT NULL
+                    CHECK (all_mandatory_matched IN (0, 1)),
+                failed_hard_gates TEXT NOT NULL,
+                ambiguous_hard_gates TEXT NOT NULL,
+                model TEXT NOT NULL CHECK (TRIM(model) != ''),
+                model_sha256 TEXT NOT NULL CHECK (LENGTH(model_sha256) = 64),
+                schema_version TEXT NOT NULL CHECK (TRIM(schema_version) != ''),
+                schema_sha256 TEXT NOT NULL CHECK (LENGTH(schema_sha256) = 64),
+                instruction_sha256 TEXT NOT NULL
+                    CHECK (LENGTH(instruction_sha256) = 64),
+                taxonomy_version TEXT NOT NULL
+                    CHECK (TRIM(taxonomy_version) != ''),
+                taxonomy_sha256 TEXT NOT NULL
+                    CHECK (LENGTH(taxonomy_sha256) = 64),
+                profile_sha256 TEXT NOT NULL
+                    CHECK (LENGTH(profile_sha256) = 64),
+                jd_sha256 TEXT NOT NULL CHECK (LENGTH(jd_sha256) = 64),
+                provider TEXT NOT NULL CHECK (TRIM(provider) != ''),
+                response_ids TEXT NOT NULL,
+                input_tokens INTEGER NOT NULL CHECK (input_tokens >= 0),
+                output_tokens INTEGER NOT NULL CHECK (output_tokens >= 0),
+                total_tokens INTEGER NOT NULL CHECK (total_tokens >= 0),
+                repair_attempted INTEGER NOT NULL
+                    CHECK (repair_attempted IN (0, 1)),
+                result_path TEXT NOT NULL CHECK (TRIM(result_path) != ''),
+                result_sha256 TEXT NOT NULL
+                    CHECK (LENGTH(result_sha256) = 64),
+                analysis_path TEXT NOT NULL CHECK (TRIM(analysis_path) != ''),
+                analysis_sha256 TEXT NOT NULL
+                    CHECK (LENGTH(analysis_sha256) = 64),
+                completed_at TEXT NOT NULL CHECK (TRIM(completed_at) != '')
+            );
+
             CREATE UNIQUE INDEX IF NOT EXISTS one_current_stage_per_application
             ON application_stage_history(application_id)
             WHERE is_current = 1;
@@ -99,11 +152,26 @@ def initialize_database(database_path: str | Path) -> None:
             ON application_stage_history(effective_from DESC)
             WHERE is_current = 1;
 
+            CREATE INDEX IF NOT EXISTS assessments_by_application
+            ON assessments(application_id, completed_at DESC);
+
             CREATE TRIGGER IF NOT EXISTS immutable_application_jd
             BEFORE UPDATE OF full_jd ON applications
             WHEN NEW.full_jd IS NOT OLD.full_jd
             BEGIN
                 SELECT RAISE(ABORT, 'full_jd is immutable');
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS immutable_completed_assessment_update
+            BEFORE UPDATE ON assessments
+            BEGIN
+                SELECT RAISE(ABORT, 'completed assessment is immutable');
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS immutable_completed_assessment_delete
+            BEFORE DELETE ON assessments
+            BEGIN
+                SELECT RAISE(ABORT, 'completed assessment is immutable');
             END;
             """
         )

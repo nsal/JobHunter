@@ -472,26 +472,30 @@ scripts/generate_ai_schemas.py --check`, `uv lock --check`, and `git diff
 - Create: `tests/test_scoring.py`
 - Create: `tests/test_assessment_service.py`
 
-- [ ] Define versioned fixed supporting categories/weights that total 100,
+- [x] Define versioned fixed supporting categories/weights that total 100,
   mandatory coverage, deterministic rounding, threshold comparison, and stable
   outcome precedence.
-- [ ] Evaluate cited salary/location, remote, authorization, clearance, and
+- [x] Evaluate cited salary/location, remote, authorization, clearance, and
   excluded-business contradictions as hard gates; retain ambiguity as a gap.
-- [ ] Build one bounded assessment request from current profile/JD blocks and
+- [x] Build one bounded assessment request from current profile/JD blocks and
   validate every model-returned block, requirement, category, and gate
   reference before scoring.
-- [ ] Persist immutable assessment metadata plus atomic
+- [x] Persist immutable assessment metadata plus atomic
   `assessment-result.json` and `match-analysis.json` artefacts without storing
   complete prompts or raw responses.
-- [ ] Record the profile/JD/model/schema/instruction/taxonomy hashes and keep
+- [x] Record the profile/JD/model/schema/instruction/taxonomy hashes and keep
   technical failures distinct from mismatch outcomes.
-- [ ] Write scoring tests for no mandatory requirements, partial/full mandatory
+- [x] Write scoring tests for no mandatory requirements, partial/full mandatory
   coverage, threshold boundaries, category arithmetic, deterministic rounding,
   simultaneous gates, ambiguity, and outcome precedence.
-- [ ] Write fake-provider service tests for matched, skill mismatch,
+- [x] Write fake-provider service tests for matched, skill mismatch,
   salary/location mismatch, other mismatch, unsupported references, changed
   inputs, provider errors, repair exhaustion, and atomic-write failure.
-- [ ] Run `uv run pytest`; record the passing count before task 6.
+- [x] Run `uv run pytest`; record the passing count before task 6.
+
+Task 5 verification: `uv run pytest` — 192 passed. `uv run ruff check .`,
+`uv run ruff format --check .`, and `uv run mypy app tests scripts` also
+passed.
 
 ### Task 6: Generate grounded CV content and deterministic DOCX candidates
 
