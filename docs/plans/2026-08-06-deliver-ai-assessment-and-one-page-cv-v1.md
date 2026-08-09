@@ -1,9 +1,9 @@
-# Deliver AI assessment and verified one-page CV v1
+# Deliver AI assessment and evidence-cited one-page CV draft v1
 
 ## Overview
 
 - Deliver one complete local workflow from immutable job description through
-  evidence-grounded assessment, deterministic scoring, tailored CV content,
+  evidence-cited assessment, deterministic scoring, tailored draft CV content,
   DOCX generation, and authoritative Microsoft Word page verification.
 - Keep FastAPI responsive by placing durable work in SQLite and running it
   through a separately supervised dispatcher with up to three spawned workers.
@@ -14,6 +14,9 @@
 - Keep v1 intentionally narrow: OpenAI only, the current raw Markdown profile,
   one private DOCX template, small private YAML layout settings, no profile
   indexing, and no automated CV refitting.
+- Treat generated CV content as an evidence-cited AI draft that requires human
+  factual and editorial review before use. Defer semantic fact-level grounding
+  to the later structured customer-profile feature.
 
 ## Context (from discovery)
 
@@ -52,7 +55,7 @@
   and Microsoft Word in the ordinary test suite.
 - Keep provider-specific code behind a narrow structured-generation protocol.
   Domain services must depend on the protocol, not the OpenAI adapter.
-- Keep scoring, lifecycle decisions, path validation, evidence validation, and
+- Keep scoring, lifecycle decisions, path validation, citation integrity, and
   page acceptance deterministic after structured model output is returned.
 - Use atomic file replacement and short SQLite write transactions. Child
   processes open their own database/provider resources and receive IDs/tokens
@@ -87,8 +90,9 @@
   immediate redirects, polling, statuses, immutable JDs, mismatch override,
   retries, dashboard badges, and Finder actions.
 - **Synthetic model cases:** Commit non-sensitive profile/JD fixtures covering
-  mandatory requirements, evidence matches, hard gates, unsupported claims,
-  score boundaries, and one-page/overflow documents.
+  mandatory requirements, evidence matches, hard gates, invalid citations,
+  exact cited identity values, confidentiality rejection, score boundaries,
+  and one-page/overflow documents.
 - **No browser E2E framework:** Do not add Playwright or similar solely for v1;
   record focused manual browser checks under Post-Completion.
 - **Final automated gate:** Run `uv run pytest`, `uv run ruff check .`,
@@ -126,7 +130,7 @@ Current private profile.md + immutable application JD
           explicit override        v
                     +------> CV generation work
                                       |
-                           grounded structured content
+                            evidence-cited CV draft
                                       |
                             template + layout YAML
                                       |
@@ -146,10 +150,11 @@ work.
 
 The assessment worker makes one structured OpenAI call over numbered profile
 and JD blocks. Application code validates every reference and computes the
-score and outcome. The CV worker makes one structured call for cited CvContent,
-applies it deterministically to a private template, and asks Word to export a
-temporary PDF. Exactly one page succeeds; any other page count fails visibly.
-There is no automatic fit-revision call in v1.
+score and outcome. The CV worker makes one structured call for evidence-cited
+draft `CvContent`, applies it deterministically to a private template, and asks
+Word to export a temporary PDF. Exactly one page succeeds; any other page count
+fails visibly. The candidate remains an AI draft requiring human review. There
+is no automatic fit-revision call in v1.
 
 ## Technical Details
 
@@ -157,6 +162,9 @@ There is no automatic fit-revision call in v1.
 
 - Read `private/profile/profile.md` when a worker starts. Record its hash, but
   do not retain a snapshot or create a Profile Index.
+- Send the raw Markdown as bounded source blocks without inferring a typed
+  customer profile. Structured Markdown/JSON/YAML profile parsing and semantic
+  fact IDs belong to the later customer-profile feature.
 - Read `private/profile/cv-template.docx` and
   `private/profile/cv-layout.yaml` for generation. The YAML contains bounded,
   machine-readable page, margin, style, font, spacing, and output settings; it
@@ -209,8 +217,14 @@ There is no automatic fit-revision call in v1.
   ambiguous facts are visible gaps, not failures.
 - Generate automatically only when the threshold is met, all mandatory
   requirements match, and no hard gate fails.
-- Require every CV claim to cite a validated profile block. Reject unsupported
-  names, titles, dates, credentials, metrics, and skills.
+- Require every CV identity value and claim to cite validated profile blocks,
+  and require claim citations to remain within assessment-allowed evidence.
+- Require each identity/contact value to occur exactly in at least one cited
+  block without attempting to classify arbitrary Markdown as a phone, URL,
+  organization, title, date, credential, skill, or metric.
+- Reject configured confidential language, but do not claim deterministic
+  semantic validation of generated prose. The provider instructions and
+  mandatory human review own factual completeness in v1.
 
 ### Work, recovery, and lifecycle
 
@@ -221,15 +235,17 @@ There is no automatic fit-revision call in v1.
 - Claim work transactionally. Only the current worker token may heartbeat,
   checkpoint, or finalize it.
 - Retry transient provider/process/Word timeouts once. Do not retry invalid
-  configuration, unsafe paths, unsupported claims, exhausted schema repair, or
-  a deterministic over-page result.
+  configuration, unsafe paths, invalid citations or cited identity values,
+  exhausted schema repair, or a deterministic over-page result.
 - Validate and atomically replace checkpoint files before marking their step
   complete. Reuse assessment output before scoring and `cv-content.json`
   before rendering when all relevant hashes still match.
 - Because profile snapshots are excluded, a changed profile hash invalidates a
   checkpoint and requires a new assessment.
 - Initial mismatch moves `Assessing` to `Mismatch`. A passing assessment stays
-  `Assessing` until verified generation moves it to `Ready to apply`.
+  `Assessing` until page-verified generation moves it to `Ready to apply`.
+- `Ready to apply` means the draft artefact passed technical generation and
+  pagination checks; it does not replace human factual/editorial review.
 - Successful override generation moves `Mismatch` to `Ready to apply` without
   changing the original score/outcome. Technical failures leave the current
   lifecycle unchanged.
@@ -243,8 +259,8 @@ There is no automatic fit-revision call in v1.
   files beneath `cv-generations/<generation-id>/`.
 - Use atomic sibling writes, containment checks, symlink rejection, and safe
   portable path segments for every file operation.
-- Generate `<First Name> <Last Name> - <Job Title>.docx` from validated,
-  profile-cited identity and the user-entered application role.
+- Generate `<First Name> <Last Name> - <Job Title>.docx` from exactly cited
+  profile identity and the user-entered application role.
 - Apply the private template/YAML deterministically; the writer never rewrites
   model content.
 - Invoke Microsoft Word on macOS without a shell, export to a temporary PDF,
@@ -497,7 +513,7 @@ Task 5 verification: `uv run pytest` — 195 passed. `uv run ruff check .`,
 `uv run ruff format --check .`, and `uv run mypy app tests scripts` also
 passed.
 
-### Task 6: Generate grounded CV content and deterministic DOCX candidates
+### Task 6: Generate evidence-cited CV drafts and deterministic DOCX candidates
 
 **Files:**
 - Create: `app/cv/__init__.py`
@@ -507,28 +523,83 @@ passed.
 - Create: `app/ai/instructions/cv-generator.md`
 - Create: `app/cv_generations.py`
 - Modify: `app/database.py`
+- ➕ Modify: `app/settings.py`
+- ➕ Modify: `examples/profile/cv-layout.example.yaml`
 - Create: `tests/test_cv_generator.py`
 - Create: `tests/test_word_writer.py`
+- ➕ Modify: `tests/test_database.py`
+- ➕ Create: `tests/fixtures/profile_master.md`
 
-- [ ] Build one bounded CV request from the validated assessment, current
+- [x] Build one bounded CV request from the validated assessment, current
   profile blocks, application role, and allowed evidence only.
-- [ ] Validate claim-level evidence references and reject fabricated identity,
-  titles, dates, credentials, skills, metrics, or confidential wording.
-- [ ] Persist immutable generation metadata and atomic `cv-content.json` under
+- [x] Limit deterministic draft validation to valid/allowed block references,
+  exact cited identity/contact occurrence, configured confidential wording,
+  and unchanged-input hashes.
+- [x] Remove semantic phone, organization, proper-name, title, credential,
+  date, metric, and claim-boundary inference from the v1 trust boundary.
+- [x] Keep the current raw Markdown block pipeline and public `CvContent`
+  schema; do not add a profile index, structured profile parser, fact IDs,
+  sidecar JSON/YAML, migration adapter, or new dependency.
+- [x] Update the CV-generation instructions to require faithful copying,
+  complete citations, preserved attribution/disclosure limits, and explicit
+  treatment of the result as a human-reviewed draft.
+- [x] Persist immutable generation metadata and atomic `cv-content.json` under
   a generation-specific directory.
-- [ ] Parse and validate the private template/layout settings, then render
+- [x] Parse and validate the private template/layout settings, then render
   CvContent deterministically without rewriting its text.
-- [ ] Apply configured page size, margins, styles, fonts, spacing, bullets,
+- [x] Apply configured page size, margins, styles, fonts, spacing, bullets,
   links, section order, and safe document metadata.
-- [ ] Produce an atomic candidate named
-  `<First Name> <Last Name> - <Job Title>.docx` from profile-cited identity and
-  the application role.
-- [ ] Write generation tests for evidence-grounded selection, role targeting,
-  safe filenames, allowed metrics/titles, and output metadata.
-- [ ] Write generator/writer error tests for unsupported claims, unsafe names,
-  changed profile hash, malformed/corrupt template or YAML, missing styles,
-  unavailable fonts, conflicting settings, and unsafe output paths.
-- [ ] Run `uv run pytest`; record the passing count before task 7.
+- [x] Produce an atomic candidate named
+  `<First Name> <Last Name> - <Job Title>.docx` from exactly cited profile
+  identity and the application role.
+- [x] Replace semantic-parser regressions with tests for the reduced contract:
+  exact cited identities, invalid/forbidden citations, confidential wording,
+  changed inputs, and arbitrary narrative claims retained as cited drafts.
+- [x] Add a realistic public master-style Markdown fixture with an
+  international phone, multi-token organizations, projects, achievements,
+  disclosure limits, and long narrative sections.
+- [x] Add a fixed-provider service test proving that the master-style fixture
+  completes assessment-to-draft generation without semantic profile parsing.
+- [x] Preserve writer tests for unsafe names, malformed/corrupt template or
+  YAML, missing styles, unavailable fonts, conflicting settings, unsafe output
+  paths, private-part pruning, and effects-aware styles.
+- [x] Run `uv run pytest tests/test_cv_generator.py` and `uv run pytest
+  tests/test_word_writer.py`; both focused suites must pass.
+- [x] Run `uv run pytest`; record the passing count before task 7.
+
+Task 6 verification: `uv run pytest` — 211 passed. `uv run ruff check .`,
+`uv run ruff format --check .`, `uv run mypy app tests scripts`, `uv run
+python scripts/generate_ai_schemas.py --check`, `uv lock --check`, and `git
+diff --check` also passed.
+
+Task 6 rollback and shipping baseline: the discarded remediation iterations
+were intentionally rolled back before a clean Task 6 restart, so their archive
+links remain deleted. The authoritative v1 contract is evidence-cited CV drafts
+with retained DOCX privacy, reachability, rendering, determinism, and serialized
+persistence behavior. The issue #31 record below remains the authoritative
+history for its completed remediation.
+
+Task 6 issue #31 remediation: the completed [CV metadata, chronology, and
+filename remediation](completed/2026-08-09-fix-cv-metadata-timestamps-and-filenames.md)
+now resets all surviving section properties before applying layout, validates
+ISO-8601 generation chronology against assessment and stage timestamps inside
+the locked persistence transaction, and bounds candidate filenames for both
+Unicode characters and atomic temporary-file bytes. Final verification:
+`uv run pytest tests/test_cv_generator.py` — 31 passed; `uv run pytest
+tests/test_word_writer.py` — 32 passed; `uv run pytest` — 258 passed; `uv run
+ruff check .`, `uv run ruff format --check .`, `uv run mypy app tests scripts`,
+`uv run python scripts/generate_ai_schemas.py --check`, `uv lock --check`, and
+`git diff --check` passed. README and AGENTS require no changes.
+
+Task 6 background privacy and timestamp-ordering remediation: generated
+candidates now remove document-level `w:background` content before package
+reachability pruning, including private internal assets and external links.
+Completed generations now list by normalized UTC instant with `id DESC` ties,
+while preserving the original stored timestamp text. The intentional rollback
+note replaces discarded-plan links. Verification: Word writer — 35 passed; CV
+generator — 35 passed; full suite — 265 passed; Ruff, mypy, schema check,
+lockfile check, local-link audit, and diff check passed. README and AGENTS
+require no changes.
 
 ### Task 7: Verify DOCX pagination through Microsoft Word
 
@@ -687,8 +758,9 @@ passed.
   timestamps, generation state, and safe failure/retry guidance.
 - [ ] Add Retry for failed work and `Generate CV anyway` for completed
   mismatches; reject duplicate/invalid actions and preserve mismatch results.
-- [ ] Move to `Ready to apply` only after successful one-page verification and
-  retain explicit manual `Submitted` transition behavior.
+- [ ] Move to `Ready to apply` only after successful one-page verification,
+  label the candidate as requiring human factual/editorial review, and retain
+  explicit manual `Submitted` transition behavior.
 - [ ] Replace the dashboard CV column with compact assessment/work status and
   add `Open artefacts` on dashboard/detail where the directory exists.
 - [ ] Implement POST-only, origin-checked, containment-checked Finder opening
@@ -712,9 +784,14 @@ passed.
 - [ ] Verify application creation returns immediately and the dispatcher runs
   no more than three isolated workers while FastAPI remains responsive.
 - [ ] Verify fixed fake results reproduce requirements, evidence, hard gates,
-  mandatory coverage, scores, outcomes, CV claims, metadata, and artefacts.
+  mandatory coverage, scores, outcomes, evidence-cited draft CV claims,
+  metadata, and artefacts.
+- [ ] Verify arbitrary master-style Markdown reaches draft generation without
+  semantic profile parsing, while invalid citations, uncited identity values,
+  confidential wording, and changed inputs still fail deterministically.
 - [ ] Verify matched and forced-mismatch flows produce the required filename
-  and reach `Ready to apply` only after an exactly-one-page Word result.
+  and reach `Ready to apply` only after an exactly-one-page Word result; verify
+  the state does not imply completion of human factual/editorial review.
 - [ ] Verify deterministic over-page, provider, process, configuration, and
   path failures remain visible/recoverable without changing lifecycle
   incorrectly or leaking private content.
@@ -737,9 +814,11 @@ passed.
   concurrency, retry/recovery semantics, and diagnostic commands.
 - [ ] Document OpenAI configuration/credentials, private setup, remote-data
   acknowledgement, lifecycle, scoring, generated artefacts, Finder handoff,
-  and manual Word/PDF workflow.
+  evidence-cited draft status, required human factual/editorial review, and
+  manual Word/PDF workflow.
 - [ ] Document macOS/Microsoft Word prerequisites, permissions, expected
-  failures, opt-in checks, and the exact v1 limitations/deferred roadmap.
+  failures, opt-in checks, arbitrary-Markdown grounding limitations, and the
+  deferred structured customer-profile roadmap.
 - [ ] Record all automated counts and applicable live OpenAI, Word, browser,
   restart-recovery, and burst-concurrency verification results in this plan.
 - [ ] Update `AGENTS.md` only for a genuinely reusable project-wide pattern and
@@ -769,8 +848,9 @@ the implementation plan.*
 - Submit more than three synthetic applications and observe queueing, FastAPI
   responsiveness, slot reuse, Word serialization, process cleanup, and restart
   recovery.
-- Open an application directory from dashboard/detail, review the DOCX in Word,
-  and manually export the final PDF.
+- Open an application directory from dashboard/detail, review the DOCX in
+  Word, verify every factual claim and disclosure boundary against the cited
+  profile evidence, edit if necessary, and manually export the final PDF.
 
 **External system and repository actions:**
 

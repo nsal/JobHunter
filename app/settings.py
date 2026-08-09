@@ -171,12 +171,48 @@ class CvLayoutSettings(StrictModel):
     spacing: SpacingSettings
     styles: StyleSettings
     output: OutputSettings
+    section_order: tuple[
+        Literal[
+            "summary",
+            "skills",
+            "experience",
+            "education",
+            "certifications",
+            "projects",
+            "additional",
+        ],
+        ...,
+    ] = (
+        "summary",
+        "skills",
+        "experience",
+        "projects",
+        "education",
+        "certifications",
+        "additional",
+    )
 
     @model_validator(mode="after")
     def hierarchy_must_remain_visible(self) -> CvLayoutSettings:
         """Keep headings larger than body text in the one-page layout."""
         if self.fonts.heading_size_pt <= self.fonts.body_size_pt:
             raise ValueError("heading font must be larger than body font")
+        expected_sections = {
+            "summary",
+            "skills",
+            "experience",
+            "education",
+            "certifications",
+            "projects",
+            "additional",
+        }
+        if (
+            len(self.section_order) != len(set(self.section_order))
+            or set(self.section_order) != expected_sections
+        ):
+            raise ValueError(
+                "section order must contain every CV section exactly once"
+            )
         return self
 
 

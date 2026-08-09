@@ -141,6 +141,42 @@ def initialize_database(database_path: str | Path) -> None:
                 completed_at TEXT NOT NULL CHECK (TRIM(completed_at) != '')
             );
 
+            CREATE TABLE IF NOT EXISTS cv_generations (
+                id TEXT PRIMARY KEY CHECK (TRIM(id) != ''),
+                application_id INTEGER NOT NULL REFERENCES applications(id),
+                assessment_id TEXT NOT NULL REFERENCES assessments(id),
+                model TEXT NOT NULL CHECK (TRIM(model) != ''),
+                model_sha256 TEXT NOT NULL CHECK (LENGTH(model_sha256) = 64),
+                schema_version TEXT NOT NULL CHECK (TRIM(schema_version) != ''),
+                schema_sha256 TEXT NOT NULL CHECK (LENGTH(schema_sha256) = 64),
+                instruction_sha256 TEXT NOT NULL
+                    CHECK (LENGTH(instruction_sha256) = 64),
+                profile_sha256 TEXT NOT NULL
+                    CHECK (LENGTH(profile_sha256) = 64),
+                jd_sha256 TEXT NOT NULL CHECK (LENGTH(jd_sha256) = 64),
+                assessment_result_sha256 TEXT NOT NULL
+                    CHECK (LENGTH(assessment_result_sha256) = 64),
+                template_sha256 TEXT NOT NULL
+                    CHECK (LENGTH(template_sha256) = 64),
+                layout_sha256 TEXT NOT NULL
+                    CHECK (LENGTH(layout_sha256) = 64),
+                provider TEXT NOT NULL CHECK (TRIM(provider) != ''),
+                response_ids TEXT NOT NULL,
+                input_tokens INTEGER NOT NULL CHECK (input_tokens >= 0),
+                output_tokens INTEGER NOT NULL CHECK (output_tokens >= 0),
+                total_tokens INTEGER NOT NULL CHECK (total_tokens >= 0),
+                repair_attempted INTEGER NOT NULL
+                    CHECK (repair_attempted IN (0, 1)),
+                content_path TEXT NOT NULL CHECK (TRIM(content_path) != ''),
+                content_sha256 TEXT NOT NULL
+                    CHECK (LENGTH(content_sha256) = 64),
+                candidate_path TEXT NOT NULL CHECK (TRIM(candidate_path) != ''),
+                candidate_sha256 TEXT NOT NULL
+                    CHECK (LENGTH(candidate_sha256) = 64),
+                completed_at TEXT NOT NULL CHECK (TRIM(completed_at) != ''),
+                UNIQUE (application_id, assessment_id)
+            );
+
             CREATE UNIQUE INDEX IF NOT EXISTS one_current_stage_per_application
             ON application_stage_history(application_id)
             WHERE is_current = 1;
@@ -154,6 +190,9 @@ def initialize_database(database_path: str | Path) -> None:
 
             CREATE INDEX IF NOT EXISTS assessments_by_application
             ON assessments(application_id, completed_at DESC);
+
+            CREATE INDEX IF NOT EXISTS cv_generations_by_application
+            ON cv_generations(application_id, completed_at DESC);
 
             CREATE TRIGGER IF NOT EXISTS immutable_application_jd
             BEFORE UPDATE OF full_jd ON applications
@@ -172,6 +211,18 @@ def initialize_database(database_path: str | Path) -> None:
             BEFORE DELETE ON assessments
             BEGIN
                 SELECT RAISE(ABORT, 'completed assessment is immutable');
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS immutable_completed_cv_generation_update
+            BEFORE UPDATE ON cv_generations
+            BEGIN
+                SELECT RAISE(ABORT, 'completed CV generation is immutable');
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS immutable_completed_cv_generation_delete
+            BEFORE DELETE ON cv_generations
+            BEGIN
+                SELECT RAISE(ABORT, 'completed CV generation is immutable');
             END;
             """
         )
