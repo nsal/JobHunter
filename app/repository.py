@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from app.artefacts import allocate_application_directory
 from app.database import STAGES, connect
+from app.work.models import canonical_timestamp
 
 
 class ApplicationNotFoundError(ValueError):
@@ -77,6 +78,7 @@ class Repository:
         full_jd = _required(values.get("full_jd"), "Full job description")
         if not effective_from:
             raise ValueError("Created date is required.")
+        work_timestamp = canonical_timestamp(effective_from, "Created date")
         with connect(self.database_path) as connection:
             pending_directory = f"pending/{uuid4().hex}"
             cursor = connection.execute(
@@ -129,6 +131,18 @@ class Repository:
                     is_current
                 ) VALUES (?, 'Assessing', 1, ?, 1)""",
                 (application_id, effective_from),
+            )
+            connection.execute(
+                """INSERT INTO work_items (
+                    id, application_id, work_type, state, available_at,
+                    current_step, queued_at
+                ) VALUES (?, ?, 'assessment', 'queued', ?, 'assessment', ?)""",
+                (
+                    uuid4().hex,
+                    application_id,
+                    work_timestamp,
+                    work_timestamp,
+                ),
             )
         return application_id
 

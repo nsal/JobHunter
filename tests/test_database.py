@@ -26,6 +26,7 @@ def test_schema_contains_fresh_lifecycle_tables(database_path: str) -> None:
         "assessments",
         "consents",
         "cv_generations",
+        "work_items",
         "sqlite_sequence",
     }
     assert "created_at" in columns
@@ -177,3 +178,236 @@ def test_schema_accepts_every_lifecycle_stage(database_path: str) -> None:
                 ) VALUES (?, ?, 1, '2026-01-01T00:00:00', 1)""",
                 (sequence, stage),
             )
+
+
+def test_work_schema_binds_assessment_ids_to_work_types(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+
+    with connect(database_path) as connection:
+        connection.execute(
+            """INSERT INTO applications(
+                role, company, full_jd, created_at, artefact_directory
+            ) VALUES ('Dev', 'Acme', 'JD', '2026-01-01', 'Acme/work-type')"""
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """INSERT INTO work_items(
+                    id, application_id, work_type, state, available_at,
+                    current_step, queued_at
+                ) VALUES ('cv-missing-assessment', 1, 'cv_generation',
+                          'queued', '2026-01-01', 'generation', '2026-01-01')"""
+            )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """INSERT INTO work_items(
+                    id, application_id, work_type, state, available_at,
+                    current_step, queued_at, assessment_id
+                ) VALUES ('assessment-with-assessment', 1, 'assessment',
+                          'queued', '2026-01-01', 'assessment', '2026-01-01',
+                          'assessment-1')"""
+            )
+
+
+def test_succeeded_assessment_work_requires_result_association(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+
+    with connect(database_path) as connection:
+        connection.execute(
+            """INSERT INTO applications(
+                role, company, full_jd, created_at, artefact_directory
+            ) VALUES ('Dev', 'Acme', 'JD', '2026-01-01', 'Acme/success')"""
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """INSERT INTO work_items(
+                    id, application_id, work_type, state, available_at,
+                    current_step, queued_at, started_at, completed_at
+                ) VALUES ('succeeded-without-result', 1, 'assessment',
+                          'succeeded', '2026-01-01', 'assessment',
+                          '2026-01-01',
+                          '2026-01-01T00:00:00.000000+00:00',
+                          '2026-01-01T00:00:01.000000+00:00')"""
+            )
+
+
+def test_assessment_work_result_association_is_state_aware(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+
+    with connect(database_path) as connection:
+        connection.execute(
+            """INSERT INTO applications(
+                role, company, full_jd, created_at, artefact_directory
+            ) VALUES ('Dev', 'Acme', 'JD', '2026-01-01', 'Acme/states')"""
+        )
+        for state in ("queued", "running", "failed"):
+            with pytest.raises(sqlite3.IntegrityError):
+                connection.execute(
+                    """INSERT INTO work_items(
+                        id, application_id, work_type, state, available_at,
+                        current_step, queued_at, assessment_id, error_code
+                    ) VALUES (?, 1, 'assessment', ?, '2026-01-01',
+                              'assessment', '2026-01-01', 'result-1', ?)""",
+                    (
+                        f"{state}-with-result",
+                        state,
+                        "failure" if state == "failed" else None,
+                    ),
+                )
+
+
+def test_work_schema_rejects_semantically_invalid_transition_timestamps(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+
+    with connect(database_path) as connection:
+        connection.execute(
+            """INSERT INTO applications(
+                role, company, full_jd, created_at, artefact_directory
+            ) VALUES ('Dev', 'Acme', 'JD', '2026-01-01', 'Acme/semantic')"""
+        )
+        for index, timestamp in enumerate(
+            (
+                "2026-99-01T00:00:00.000000+00:00",
+                "2026-02-30T00:00:00.000000+00:00",
+                "2026-01-01T99:00:00.000000+00:00",
+                "2026-01-01T24:00:00.000000+00:00",
+                "2026-01-01T00:99:00.000000+00:00",
+                "2026-01-01T00:00:99.000000+00:00",
+            ),
+            start=1,
+        ):
+            with pytest.raises(sqlite3.IntegrityError):
+                connection.execute(
+                    """INSERT INTO work_items(
+                    id, application_id, work_type, state, available_at,
+                        current_step, queued_at, started_at, heartbeat_at,
+                        worker_token
+                    ) VALUES (?, 1, 'assessment', 'running', '2026-01-01',
+                              'assessment', '2026-01-01', ?, ?, 'worker')""",
+                    (
+                        f"invalid-{index}",
+                        "2026-01-01T00:00:00.000000+00:00",
+                        timestamp,
+                    ),
+                )
+
+
+def test_work_schema_rejects_impossible_attempt_timestamp_order(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+
+    with connect(database_path) as connection:
+        connection.execute(
+            """INSERT INTO applications(
+                role, company, full_jd, created_at, artefact_directory
+            ) VALUES ('Dev', 'Acme', 'JD', '2026-01-01', 'Acme/timestamps')"""
+        )
+        for work_id, values in (
+            (
+                "heartbeat-before-start",
+                (
+                    "2026-01-01T00:00:02.000000+00:00",
+                    "2026-01-01T00:00:01.000000+00:00",
+                    None,
+                ),
+            ),
+            (
+                "complete-before-start",
+                (
+                    "2026-01-01T00:00:02.000000+00:00",
+                    "2026-01-01T00:00:02.000000+00:00",
+                    "2026-01-01T00:00:01.000000+00:00",
+                ),
+            ),
+            (
+                "complete-before-heartbeat",
+                (
+                    "2026-01-01T00:00:02.000000+00:00",
+                    "2026-01-01T00:00:03.000000+00:00",
+                    "2026-01-01T00:00:02.000000+00:00",
+                ),
+            ),
+            (
+                "heartbeat-before-start-offset",
+                (
+                    "2026-01-01T00:00:00.000000+00:00",
+                    "2026-01-01T01:00:00.000000+02:00",
+                    None,
+                ),
+            ),
+            (
+                "complete-before-start-offset",
+                (
+                    "2026-01-01T00:00:00.000000+00:00",
+                    None,
+                    "2026-01-01T01:00:00.000000+02:00",
+                ),
+            ),
+            (
+                "complete-before-heartbeat-offset",
+                (
+                    "2026-01-01T00:00:00.000000+00:00",
+                    "2026-01-01T01:00:00.000000+00:00",
+                    "2026-01-01T01:00:00.000000+02:00",
+                ),
+            ),
+            (
+                "heartbeat-before-start-microsecond",
+                (
+                    "2026-01-01T00:00:00.000001+00:00",
+                    "2026-01-01T00:00:00.000000+00:00",
+                    None,
+                ),
+            ),
+            (
+                "complete-before-start-microsecond",
+                (
+                    "2026-01-01T00:00:00.000001+00:00",
+                    None,
+                    "2026-01-01T00:00:00.000000+00:00",
+                ),
+            ),
+            (
+                "complete-before-heartbeat-microsecond",
+                (
+                    "2026-01-01T00:00:00.000000+00:00",
+                    "2026-01-01T00:00:00.000001+00:00",
+                    "2026-01-01T00:00:00.000000+00:00",
+                ),
+            ),
+        ):
+            with pytest.raises(sqlite3.IntegrityError):
+                connection.execute(
+                    """INSERT INTO work_items(
+                        id, application_id, work_type, state, available_at,
+                        current_step, queued_at, started_at, heartbeat_at,
+                        completed_at, worker_token
+                    ) VALUES (?, 1, 'assessment', 'running',
+                              '2026-01-01', 'assessment', '2026-01-01',
+                              ?, ?, ?, 'worker')
+                    """,
+                    (work_id, *values),
+                )
+
+        connection.execute(
+            """INSERT INTO work_items(
+                id, application_id, work_type, state, available_at,
+                current_step, queued_at, started_at, heartbeat_at,
+                completed_at, worker_token
+            ) VALUES (
+                'microsecond-forward', 1, 'assessment', 'running',
+                '2024-02-29', 'assessment', '2024-02-29',
+                '2024-02-29T00:00:00.000000+00:00',
+                '2024-02-29T00:00:00.000000+00:00',
+                '2024-02-29T00:00:00.000001+00:00',
+                'worker'
+            )"""
+        )

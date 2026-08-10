@@ -654,29 +654,81 @@ selects an authoritative renderer.
 - Modify: `tests/test_repository.py`
 - Modify: `tests/test_assessment_service.py`
 
-- [ ] Add `work_items` with typed/check-constrained
+- [x] Add `work_items` with typed/check-constrained
   states, work types, attempts, availability, steps, tokens, heartbeats,
   timestamps, checkpoint hashes, and sanitized errors.
-- [ ] Enforce one queued/running work item per application and transactional
+- [x] Enforce one queued/running work item per application and transactional
   claim, heartbeat, checkpoint, completion, failure, delayed retry, and stale
   recovery operations.
-- [ ] Implement one transient retry and deterministic failure classification;
+- [x] Implement one transient retry and deterministic failure classification;
   reject stale tokens and make completion/failure idempotent.
-- [ ] Keep document generation independent of desktop applications and
+- [x] Keep document generation independent of desktop applications and
   finalize work after atomic DOCX persistence.
-- [ ] Atomically create application, initial assessment, and queued assessment
+- [x] Atomically create application, initial assessment, and queued assessment
   work; atomically enqueue automatic generation after a matched assessment.
-- [ ] Implement mismatch override generation while preserving the original
+- [x] Implement mismatch override generation while preserving the original
   assessment and rejecting duplicate active work.
-- [ ] Reuse validated assessment/CvContent checkpoints only when profile, JD,
+- [x] Reuse validated assessment/CvContent checkpoints only when profile, JD,
   prompt, schema, template, and layout hashes still match.
-- [ ] Write work/repository tests for ordinary state transitions, concurrency
+- [x] Write work/repository tests for ordinary state transitions, concurrency
   constraints, duplicate work, stale tokens, heartbeat expiry, retry
   exhaustion, checkpoint reuse/invalidation, atomic initial work, automatic
   generation, and override generation.
-- [ ] Write error tests for interrupted writes, deterministic failures,
+- [x] Write error tests for interrupted writes, deterministic failures,
   idempotent finalization, and unchanged lifecycle after technical failure.
-- [ ] Run `uv run pytest`; record the passing count before task 9.
+- [x] Run `uv run pytest`; record the passing count before task 9.
+
+Task 8 verification: durable work state, active-work uniqueness, mandatory
+token-bound assessment/CV finalization, canonical work timestamps, redacted
+failures, bounded stale recovery, automatic matched generation enqueue, and
+mismatch override enqueue are implemented. Fix 1 full suite: 277 passed;
+Fix 2 full suite: 280 passed. Ruff, mypy, schema drift, lockfile, and
+whitespace checks passed for both fixes. No README or AGENTS change is
+required; the mandatory work credentials are an internal worker API contract.
+
+Task 8 Fix 3 verification for [issue #38](https://github.com/nsal/JobHunter/issues/38):
+assessment and CV execution now preflight exact work ownership before private
+input, provider, and artefact access; final transactional ownership checks are
+retained; completed mismatch assessments reject duplicate overrides; and CV
+completion hashes are bound to the claimed work and referenced assessment.
+Focused tests: 68 passed. Fix 3 full suite: 295 passed. Ruff, format, mypy,
+schema drift, lockfile, and whitespace checks passed. No README or AGENTS
+change is required, and Task 9 and later tasks remain incomplete.
+
+Task 8 Fix 4 verification for [issue #39](https://github.com/nsal/JobHunter/issues/39):
+assessment and CV terminal replays now require exact equality with the full
+immutable SQLite payload under the original finalizer token. Altered payloads,
+missing immutable rows, and wrong finalizers preserve terminal work, lifecycle,
+follow-up work, and artefact state while returning stable errors. Assessment
+preflight now has wrong-application and wrong-work-type regressions, and both
+services have post-preflight lease-reclaim coverage. Focused tests: 123 passed;
+full suite: 350 passed. Ruff, format, mypy, schema drift, lockfile, and
+whitespace checks passed. No README or AGENTS change is required, and Task 9
+and later tasks remain incomplete.
+
+Task 8 Fix 5 verification for [issue #40](https://github.com/nsal/JobHunter/issues/40):
+generic work success finalization was removed; assessment and CV repositories
+now own immutable-result insertion and work success atomically. CV enqueue is
+assessment-bound, validates application ownership, and derives matching input
+hashes. Worker failure replay retains a redacted owner token and accepts only
+exact owner/code/message replays; claims and stale recovery clear obsolete
+failure ownership. Canonical heartbeat, failure, and domain completion times
+are checked against current-attempt activity, with matching fresh-schema
+constraints. Focused tests: 142 passed; full suite: 354 passed. Ruff, format,
+mypy, schema drift, lockfile, and whitespace checks passed. No README or
+AGENTS change is required, and Task 9 and later tasks remain incomplete.
+
+Task 8 Fix 6 verification for [issue #41](https://github.com/nsal/JobHunter/issues/41):
+succeeded assessment work now stores and checks its immutable result association,
+so same-token terminal replay cannot substitute another work item's assessment.
+Generic CV enqueue rejects assessments with an existing immutable generation
+inside its immediate transaction and preserves the prior domain/work snapshot.
+Work transition timestamps retain exact six-digit lexical ordering while also
+rejecting impossible calendar and clock components, including invalid leap days
+and hour 24. Focused assessment/database/work tests: 75 passed; CV/work
+repository tests: 87 passed; full suite: 361 passed. Ruff, format, mypy,
+generated-schema, lockfile, and whitespace checks passed. No README or AGENTS
+change is required, and Task 9 and later tasks remain incomplete.
 
 ### Task 9: Build the supervised launcher, dispatcher, and spawned workers
 

@@ -286,12 +286,22 @@ class CvGenerationService:
         completed_at: str,
         *,
         allow_mismatch: bool = False,
+        work_id: str,
+        worker_token: str,
     ) -> CvGenerationExecution:
         """Produce and persist one evidence-cited DOCX candidate."""
         if not completed_at or completed_at != completed_at.strip():
             raise ValueError(
                 "CV generation completion time must be trimmed text"
             )
+        if not work_id.strip() or not worker_token.strip():
+            raise ValueError("CV work ID and worker token are required.")
+        self._repository.preflight(
+            application_id,
+            assessment_id,
+            work_id,
+            worker_token,
+        )
         generation_input = self._repository.get_input(
             application_id,
             assessment_id,
@@ -385,6 +395,8 @@ class CvGenerationService:
                 candidate_path=candidate.relative_path,
                 candidate_sha256=candidate.sha256,
                 completed_at=completed_at,
+                work_id=work_id,
+                worker_token=worker_token,
             )
             self._repository.add_completed(completed)
         except BaseException:

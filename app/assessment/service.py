@@ -137,12 +137,19 @@ class AssessmentService:
         *,
         expected_profile_sha256: str | None = None,
         expected_jd_sha256: str | None = None,
+        work_id: str,
+        worker_token: str,
     ) -> AssessmentExecution:
         """Generate, validate, score, atomically write, and persist a result."""
         if not completed_at or completed_at != completed_at.strip():
             raise ValueError(
                 "assessment completion time must be non-empty trimmed text"
             )
+        if not work_id.strip() or not worker_token.strip():
+            raise ValueError(
+                "Assessment work ID and worker token are required."
+            )
+        self._repository.preflight(application_id, work_id, worker_token)
         application = self._repository.get_application(application_id)
         if application.current_stage != "Assessing":
             raise RuntimeError("Application is not awaiting assessment.")
@@ -240,6 +247,8 @@ class AssessmentService:
                 analysis_path=analysis_path,
                 analysis_sha256=self._artefacts.sha256(analysis_path),
                 completed_at=completed_at,
+                work_id=work_id,
+                worker_token=worker_token,
             )
             self._repository.add_completed(completed)
         except BaseException:
@@ -262,6 +271,8 @@ class AssessmentService:
         *,
         expected_profile_sha256: str | None = None,
         expected_jd_sha256: str | None = None,
+        work_id: str,
+        worker_token: str,
     ) -> AssessmentExecution:
         """Compatibility alias expressing the domain action directly."""
         return self.execute(
@@ -269,4 +280,6 @@ class AssessmentService:
             completed_at,
             expected_profile_sha256=expected_profile_sha256,
             expected_jd_sha256=expected_jd_sha256,
+            work_id=work_id,
+            worker_token=worker_token,
         )

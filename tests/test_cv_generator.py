@@ -27,6 +27,7 @@ from app.artefacts import ArtefactStore
 from app.assessment.service import AssessmentService
 from app.assessments import AssessmentRepository
 from app.cv.generator import (
+    CvGenerationExecution,
     CvGenerationService,
     CvGroundingError,
     CvInputChangedError,
@@ -34,7 +35,6 @@ from app.cv.generator import (
 )
 from app.cv_generations import (
     CompletedCvGeneration,
-    CvGenerationNotFoundError,
     CvGenerationRepository,
     CvGenerationStateError,
 )
@@ -46,6 +46,8 @@ from app.settings import (
     load_ai_settings,
     validate_private_inputs,
 )
+from app.work.models import WorkType, canonical_timestamp
+from app.work.repository import StaleWorkerError, WorkRepository, WorkStateError
 from tests.fixtures.assessment_cases import assessment_result
 
 PROFILE = """# Avery Morgan
@@ -214,7 +216,42 @@ def seed_assessment(
     profile_path: Path,
     result: AssessmentResult | None = None,
     completed_at: str = "2026-08-07T10:00:00+00:00",
+    seed_generation_id: str | None = None,
+    seed_generation_completed_at: str = "2026-08-07T11:00:00+00:00",
 ) -> str:
+    work_repository = WorkRepository(database_path)
+    active_generation = work_repository.active_for_application(
+        1, WorkType.CV_GENERATION
+    )
+    if active_generation is not None:
+        assert active_generation.assessment_id is not None
+        persist_generation(
+            database_path,
+            replace(
+                completed_generation(
+                    database_path,
+                    1,
+                    active_generation.assessment_id,
+                    seed_generation_id
+                    or f"seed-generation-{active_generation.assessment_id}",
+                ),
+                completed_at=seed_generation_completed_at,
+            ),
+        )
+    assessment_work = work_repository.active_for_application(
+        1, WorkType.ASSESSMENT
+    )
+    if assessment_work is None:
+        assessment_work_id = work_repository.enqueue(
+            1, WorkType.ASSESSMENT, "2026-08-07T09:00:00Z"
+        )
+        assessment_work = work_repository.get(assessment_work_id)
+    assert assessment_work is not None
+    assessment_token = "seed-assessment-worker"
+    if assessment_work.state.value == "queued":
+        work_repository.claim(
+            assessment_work.id, assessment_token, "2026-08-07T09:01:00Z"
+        )
     service = AssessmentService(
         AssessmentRepository(database_path),
         artefacts,
@@ -222,8 +259,66 @@ def seed_assessment(
         load_ai_settings(),
         profile_path,
     )
-    execution = service.execute(1, completed_at)
+    execution = service.execute(
+        1,
+        completed_at,
+        work_id=assessment_work.id,
+        worker_token=assessment_token,
+    )
     return execution.assessment_id
+
+
+def generation_work_credentials(
+    database_path: str,
+    application_id: int,
+    assessment_id: str,
+    queued_at: str,
+    *,
+    allow_mismatch: bool = False,
+) -> tuple[str, str]:
+    repository = WorkRepository(database_path)
+    work = repository.active_for_application(
+        application_id,
+        WorkType.CV_GENERATION,
+        assessment_id=assessment_id,
+    )
+    if work is None and allow_mismatch:
+        work_id = CvGenerationRepository(database_path).enqueue_override(
+            application_id, assessment_id, "2026-08-07T10:00:00Z"
+        )
+        work = repository.get(work_id)
+    assert work is not None
+    token = "generation-worker"
+    if work.state.value == "queued":
+        claim_at = "2026-08-07T10:30:00Z"
+        repository.claim(work.id, token, claim_at)
+    return work.id, token
+
+
+def run_generation(
+    service: CvGenerationService,
+    database_path: str,
+    application_id: int,
+    assessment_id: str,
+    completed_at: str,
+    *,
+    allow_mismatch: bool = False,
+) -> CvGenerationExecution:
+    work_id, worker_token = generation_work_credentials(
+        database_path,
+        application_id,
+        assessment_id,
+        completed_at,
+        allow_mismatch=allow_mismatch,
+    )
+    return service.execute(
+        application_id,
+        assessment_id,
+        completed_at,
+        allow_mismatch=allow_mismatch,
+        work_id=work_id,
+        worker_token=worker_token,
+    )
 
 
 def build_service(
@@ -259,10 +354,28 @@ def prepared_workflow(
 
 
 def completed_generation(
+    database_path: str,
     application_id: int,
     assessment_id: str,
     generation_id: str = "generation-1",
 ) -> CompletedCvGeneration:
+    with connect(database_path) as connection:
+        assessment = connection.execute(
+            """SELECT profile_sha256, jd_sha256, result_sha256
+            FROM assessments WHERE id = ? AND application_id = ?""",
+            (assessment_id, application_id),
+        ).fetchone()
+    profile_sha256 = (
+        str(assessment["profile_sha256"])
+        if assessment is not None
+        else "d" * 64
+    )
+    jd_sha256 = (
+        str(assessment["jd_sha256"]) if assessment is not None else "e" * 64
+    )
+    assessment_result_sha256 = (
+        str(assessment["result_sha256"]) if assessment is not None else "f" * 64
+    )
     return CompletedCvGeneration(
         generation_id=generation_id,
         application_id=application_id,
@@ -272,9 +385,9 @@ def completed_generation(
         schema_version="v1",
         schema_sha256="b" * 64,
         instruction_sha256="c" * 64,
-        profile_sha256="d" * 64,
-        jd_sha256="e" * 64,
-        assessment_result_sha256="f" * 64,
+        profile_sha256=profile_sha256,
+        jd_sha256=jd_sha256,
+        assessment_result_sha256=assessment_result_sha256,
         template_sha256="1" * 64,
         layout_sha256="2" * 64,
         provider="test",
@@ -288,7 +401,101 @@ def completed_generation(
         candidate_path="application/cv-generations/generation-1/cv.docx",
         candidate_sha256="4" * 64,
         completed_at="2026-08-07T11:00:00+00:00",
+        work_id="",
+        worker_token="",
     )
+
+
+def with_generation_hash(
+    generation: CompletedCvGeneration, field: str, value: str
+) -> CompletedCvGeneration:
+    """Return a fixture with one selected completion hash changed."""
+    if field == "profile_sha256":
+        return replace(generation, profile_sha256=value)
+    if field == "jd_sha256":
+        return replace(generation, jd_sha256=value)
+    if field == "assessment_result_sha256":
+        return replace(generation, assessment_result_sha256=value)
+    if field == "instruction_sha256":
+        return replace(generation, instruction_sha256=value)
+    if field == "schema_sha256":
+        return replace(generation, schema_sha256=value)
+    if field == "template_sha256":
+        return replace(generation, template_sha256=value)
+    if field == "layout_sha256":
+        return replace(generation, layout_sha256=value)
+    raise AssertionError(f"Unknown generation hash field: {field}")
+
+
+def persist_generation(
+    database_path: str, generation: CompletedCvGeneration
+) -> None:
+    work_repository = WorkRepository(database_path)
+    work = work_repository.active_for_application(
+        generation.application_id,
+        WorkType.CV_GENERATION,
+        assessment_id=generation.assessment_id,
+    )
+    if work is None:
+        other_work = work_repository.active_for_application(
+            generation.application_id, WorkType.CV_GENERATION
+        )
+        if other_work is not None:
+            assert other_work.assessment_id is not None
+            persist_generation(
+                database_path,
+                completed_generation(
+                    database_path,
+                    generation.application_id,
+                    other_work.assessment_id,
+                    "cleanup-generation",
+                ),
+            )
+        assessment = AssessmentRepository(database_path).get(
+            generation.assessment_id
+        )
+        work_id = work_repository.enqueue(
+            generation.application_id,
+            WorkType.CV_GENERATION,
+            "2026-08-07T10:30:00Z",
+            assessment_id=generation.assessment_id,
+            profile_sha256=str(assessment["profile_sha256"]),
+            jd_sha256=str(assessment["jd_sha256"]),
+        )
+        work = work_repository.get(work_id)
+    assert work is not None
+    token = "repository-generation-worker"
+    if work.state.value == "queued":
+        claim_at = max(work.available_at, "2026-08-07T10:30:00.000000+00:00")
+        work_repository.claim(work.id, token, claim_at)
+    generation = replace(
+        generation,
+        work_id=work.id,
+        worker_token=token,
+    )
+    CvGenerationRepository(database_path).add_completed(generation)
+
+
+def cv_state_snapshot(
+    database_path: str, application_id: int
+) -> tuple[list[tuple[object, ...]], list[tuple[object, ...]]]:
+    """Capture immutable generation and durable work rows atomically."""
+    with connect(database_path) as connection:
+        generations = [
+            tuple(row)
+            for row in connection.execute(
+                "SELECT * FROM cv_generations ORDER BY id"
+            ).fetchall()
+        ]
+        work = [
+            tuple(row)
+            for row in connection.execute(
+                """SELECT * FROM work_items
+                WHERE application_id = ? ORDER BY id""",
+                (application_id,),
+            ).fetchall()
+        ]
+    return generations, work
 
 
 def test_generation_is_cited_role_targeted_rendered_and_persisted(
@@ -301,7 +508,9 @@ def test_generation_is_cited_role_targeted_rendered_and_persisted(
         database_path, tmp_path, cv_content(), artefacts=artefacts
     )
 
-    execution = service.execute(
+    execution = run_generation(
+        service,
+        database_path,
         application_id,
         assessment_id,
         "2026-08-07T11:00:00+00:00",
@@ -354,6 +563,92 @@ def test_generation_is_cited_role_targeted_rendered_and_persisted(
         ]
         == "Assessing"
     )
+
+
+def test_cv_rejects_blank_credentials_before_provider_or_artefact_writes(
+    database_path: str, tmp_path: Path
+) -> None:
+    application_id, assessment_id, _, artefacts = prepared_workflow(
+        database_path, tmp_path
+    )
+    service, fake, _ = build_service(
+        database_path, tmp_path, cv_content(), artefacts=artefacts
+    )
+
+    with pytest.raises(ValueError, match="work ID"):
+        service.execute(
+            application_id,
+            assessment_id,
+            "2026-08-07T11:00:00+00:00",
+            work_id=" ",
+            worker_token="worker-a",
+        )
+
+    assert fake.requests == []
+    assert list(artefacts.root.rglob("cv-content.json")) == []
+
+
+@pytest.mark.parametrize(
+    ("credential_error", "expected_error"),
+    [
+        ("missing", CvGenerationStateError),
+        ("wrong-application", CvGenerationStateError),
+        ("wrong-assessment", CvGenerationStateError),
+        ("wrong-type", CvGenerationStateError),
+        ("wrong-token", StaleWorkerError),
+    ],
+)
+def test_cv_preflight_rejects_unowned_work_before_private_input(
+    database_path: str,
+    tmp_path: Path,
+    credential_error: str,
+    expected_error: type[Exception],
+) -> None:
+    application_id, assessment_id, profile_path, artefacts = prepared_workflow(
+        database_path, tmp_path
+    )
+    work_id, worker_token = generation_work_credentials(
+        database_path, application_id, assessment_id, "2026-08-07T11:00:00Z"
+    )
+    service, fake, _ = build_service(
+        database_path, tmp_path, cv_content(), artefacts=artefacts
+    )
+    profile_path.unlink()
+
+    call_application_id = application_id
+    call_assessment_id = assessment_id
+    call_work_id = work_id
+    call_worker_token = worker_token
+    if credential_error == "missing":
+        call_work_id = "missing-work"
+    elif credential_error == "wrong-application":
+        call_application_id = application_id + 999
+    elif credential_error == "wrong-assessment":
+        call_assessment_id = "missing-assessment"
+    elif credential_error == "wrong-type":
+        with connect(database_path) as connection:
+            row = connection.execute(
+                """SELECT id FROM work_items
+                WHERE application_id = ? AND work_type = 'assessment'""",
+                (application_id,),
+            ).fetchone()
+        assert row is not None
+        call_work_id = str(row["id"])
+    else:
+        call_worker_token = "worker-b"
+
+    with pytest.raises(expected_error):
+        service.execute(
+            call_application_id,
+            call_assessment_id,
+            "2026-08-07T11:00:00+00:00",
+            work_id=call_work_id,
+            worker_token=call_worker_token,
+        )
+
+    assert fake.requests == []
+    assert list(artefacts.root.rglob("cv-content.json")) == []
+    assert list(artefacts.root.rglob("*.docx")) == []
 
 
 @pytest.mark.parametrize(
@@ -590,7 +885,9 @@ def test_master_markdown_completes_assessment_to_cited_draft_generation(
         artefacts=artefacts,
     )
 
-    execution = service.execute(
+    execution = run_generation(
+        service,
+        database_path,
         application_id,
         assessment_id,
         "2026-08-07T11:00:00+00:00",
@@ -622,7 +919,9 @@ def test_changed_profile_is_rejected_before_and_after_generation(
     )
     profile_path.write_text("# Changed profile", encoding="utf-8")
     with pytest.raises(CvInputChangedError):
-        service.execute(
+        run_generation(
+            service,
+            database_path,
             application_id,
             assessment_id,
             "2026-08-07T11:00:00+00:00",
@@ -642,7 +941,9 @@ def test_changed_profile_is_rejected_before_and_after_generation(
         artefacts=artefacts,
     )
     with pytest.raises(CvInputChangedError):
-        service.execute(
+        run_generation(
+            service,
+            database_path,
             application_id,
             assessment_id,
             "2026-08-07T11:00:00+00:00",
@@ -679,14 +980,18 @@ def test_mismatch_requires_explicit_override(
         database_path, tmp_path, content, artefacts=artefacts
     )
 
-    with pytest.raises(CvGenerationStateError):
+    with pytest.raises(ValueError, match="work ID"):
         service.execute(
             application_id,
             assessment_id,
             "2026-08-07T11:00:00+00:00",
+            work_id="",
+            worker_token="",
         )
 
-    execution = service.execute(
+    execution = run_generation(
+        service,
+        database_path,
         application_id,
         assessment_id,
         "2026-08-07T11:00:00+00:00",
@@ -708,6 +1013,370 @@ def test_mismatch_requires_explicit_override(
         == 1
     )
 
+    with pytest.raises(CvGenerationStateError, match="already been completed"):
+        CvGenerationRepository(database_path).enqueue_override(
+            application_id,
+            assessment_id,
+            "2026-08-07T12:00:01+00:00",
+        )
+    with connect(database_path) as connection:
+        active = connection.execute(
+            """SELECT COUNT(*) FROM work_items
+            WHERE application_id = ? AND state IN ('queued', 'running')""",
+            (application_id,),
+        ).fetchone()[0]
+        completed = connection.execute(
+            """SELECT COUNT(*) FROM cv_generations
+            WHERE application_id = ? AND assessment_id = ?""",
+            (application_id, assessment_id),
+        ).fetchone()[0]
+    assert active == 0
+    assert completed == 1
+
+
+def test_generic_enqueue_rejects_completed_generation_atomically(
+    database_path: str,
+    tmp_path: Path,
+) -> None:
+    application_id, assessment_id, _, _ = prepared_workflow(
+        database_path, tmp_path
+    )
+    persist_generation(
+        database_path,
+        completed_generation(database_path, application_id, assessment_id),
+    )
+    before = cv_state_snapshot(database_path, application_id)
+
+    with pytest.raises(WorkStateError, match="already been completed"):
+        WorkRepository(database_path).enqueue(
+            application_id,
+            WorkType.CV_GENERATION,
+            "2026-08-07T12:00:00Z",
+            assessment_id=assessment_id,
+        )
+
+    assert cv_state_snapshot(database_path, application_id) == before
+
+
+def test_mismatch_override_validation_and_enqueue_are_atomic(
+    database_path: str, tmp_path: Path
+) -> None:
+    initialize_database(database_path)
+    application_id = create_application(database_path)
+    profile_path = prepare_private_inputs(tmp_path)
+    artefacts = ArtefactStore(tmp_path / "private" / "artefacts")
+    assessment_id = seed_assessment(
+        database_path,
+        artefacts,
+        profile_path,
+        assessment_result(classifications=(RequirementMatch.GAP,)),
+    )
+    repository = CvGenerationRepository(database_path)
+
+    work_id = repository.enqueue_override(
+        application_id,
+        assessment_id,
+        "2026-08-07T12:00:00+02:00",
+    )
+    work = WorkRepository(database_path).get(work_id)
+    assert work.work_type is WorkType.CV_GENERATION
+    assert work.assessment_id == assessment_id
+    assert work.queued_at == "2026-08-07T10:00:00.000000+00:00"
+
+    with pytest.raises(CvGenerationStateError, match="active work"):
+        repository.enqueue_override(
+            application_id,
+            assessment_id,
+            "2026-08-07T12:00:01+02:00",
+        )
+
+    with connect(database_path) as connection:
+        stored = connection.execute(
+            "SELECT outcome FROM assessments WHERE id = ?", (assessment_id,)
+        ).fetchone()
+    assert stored is not None
+    assert stored["outcome"] == "skill_mismatch"
+
+
+@pytest.mark.parametrize(
+    "hash_field",
+    ("profile_sha256", "jd_sha256", "assessment_result_sha256"),
+)
+def test_completed_generation_rejects_required_hash_mismatch_atomically(
+    database_path: str,
+    tmp_path: Path,
+    hash_field: str,
+) -> None:
+    application_id, assessment_id, _, _ = prepared_workflow(
+        database_path, tmp_path
+    )
+    generation = with_generation_hash(
+        completed_generation(database_path, application_id, assessment_id),
+        hash_field,
+        "0" * 64,
+    )
+
+    with pytest.raises(CvGenerationStateError, match="hashes"):
+        persist_generation(database_path, generation)
+
+    with connect(database_path) as connection:
+        work = connection.execute(
+            """SELECT state FROM work_items
+            WHERE application_id = ? AND work_type = 'cv_generation'""",
+            (application_id,),
+        ).fetchone()
+        generations = connection.execute(
+            "SELECT COUNT(*) FROM cv_generations WHERE application_id = ?",
+            (application_id,),
+        ).fetchone()[0]
+    assert work is not None
+    assert work["state"] == "running"
+    assert generations == 0
+
+
+@pytest.mark.parametrize(
+    ("work_field", "generation_field"),
+    (
+        ("prompt_sha256", "instruction_sha256"),
+        ("schema_sha256", "schema_sha256"),
+        ("template_sha256", "template_sha256"),
+        ("layout_sha256", "layout_sha256"),
+    ),
+)
+def test_completed_generation_rejects_populated_optional_hash_mismatch(
+    database_path: str,
+    tmp_path: Path,
+    work_field: str,
+    generation_field: str,
+) -> None:
+    application_id, assessment_id, _, _ = prepared_workflow(
+        database_path, tmp_path
+    )
+    work_repository = WorkRepository(database_path)
+    work = work_repository.active_for_application(
+        application_id,
+        WorkType.CV_GENERATION,
+        assessment_id=assessment_id,
+    )
+    assert work is not None
+    bound_hash = "1" * 64
+    with connect(database_path) as connection:
+        connection.execute(
+            f"UPDATE work_items SET {work_field} = ? WHERE id = ?",
+            (bound_hash, work.id),
+        )
+    generation = with_generation_hash(
+        completed_generation(database_path, application_id, assessment_id),
+        generation_field,
+        "2" * 64,
+    )
+
+    with pytest.raises(CvGenerationStateError, match="hashes"):
+        persist_generation(database_path, generation)
+
+    with connect(database_path) as connection:
+        state = connection.execute(
+            "SELECT state FROM work_items WHERE id = ?", (work.id,)
+        ).fetchone()["state"]
+        count = connection.execute(
+            "SELECT COUNT(*) FROM cv_generations WHERE id = ?",
+            (generation.generation_id,),
+        ).fetchone()[0]
+    assert state == "running"
+    assert count == 0
+
+
+def test_completed_generation_idempotency_preserves_owner_boundary(
+    database_path: str, tmp_path: Path
+) -> None:
+    application_id, assessment_id, _, _ = prepared_workflow(
+        database_path, tmp_path
+    )
+    work_repository = WorkRepository(database_path)
+    work = work_repository.active_for_application(
+        application_id,
+        WorkType.CV_GENERATION,
+        assessment_id=assessment_id,
+    )
+    assert work is not None
+    token = "generation-finalizer"
+    work_repository.claim(work.id, token, "2026-08-07T10:30:00Z")
+    generation = replace(
+        completed_generation(database_path, application_id, assessment_id),
+        work_id=work.id,
+        worker_token=token,
+    )
+    repository = CvGenerationRepository(database_path)
+
+    repository.add_completed(generation)
+    repository.add_completed(generation)
+    with pytest.raises(StaleWorkerError):
+        repository.add_completed(
+            replace(generation, worker_token="different-finalizer")
+        )
+
+    assert len(repository.list_for_application(application_id)) == 1
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("model", "changed-model"),
+        ("model_sha256", "5" * 64),
+        ("schema_version", "changed-schema"),
+        ("schema_sha256", "6" * 64),
+        ("instruction_sha256", "7" * 64),
+        ("profile_sha256", "8" * 64),
+        ("jd_sha256", "9" * 64),
+        ("assessment_result_sha256", "a" * 64),
+        ("template_sha256", "b" * 64),
+        ("layout_sha256", "c" * 64),
+        ("provider", "changed-provider"),
+        ("response_ids", ("changed-response",)),
+        ("input_tokens", 11),
+        ("output_tokens", 21),
+        ("total_tokens", 31),
+        ("repair_attempted", True),
+        ("content_path", "changed-content.json"),
+        ("content_sha256", "d" * 64),
+        ("candidate_path", "changed-candidate.docx"),
+        ("candidate_sha256", "e" * 64),
+        ("completed_at", "2026-08-07T11:00:01+00:00"),
+    ),
+)
+def test_completed_generation_replay_requires_exact_payload_atomically(
+    database_path: str,
+    tmp_path: Path,
+    field: str,
+    value: object,
+) -> None:
+    application_id, assessment_id, _, _ = prepared_workflow(
+        database_path, tmp_path
+    )
+    work_repository = WorkRepository(database_path)
+    work = work_repository.active_for_application(
+        application_id,
+        WorkType.CV_GENERATION,
+        assessment_id=assessment_id,
+    )
+    assert work is not None
+    token = "generation-finalizer"
+    work_repository.claim(work.id, token, "2026-08-07T10:30:00Z")
+    generation = replace(
+        completed_generation(database_path, application_id, assessment_id),
+        work_id=work.id,
+        worker_token=token,
+    )
+    repository = CvGenerationRepository(database_path)
+    repository.add_completed(generation)
+    before = cv_state_snapshot(database_path, application_id)
+
+    changes: dict[str, Any] = {field: value}
+    with pytest.raises(CvGenerationStateError, match="does not match"):
+        repository.add_completed(replace(generation, **changes))
+
+    assert cv_state_snapshot(database_path, application_id) == before
+    repository.add_completed(generation)
+    assert cv_state_snapshot(database_path, application_id) == before
+
+
+def test_completed_generation_replay_rejects_missing_row(
+    database_path: str, tmp_path: Path
+) -> None:
+    application_id, assessment_id, _, _ = prepared_workflow(
+        database_path, tmp_path
+    )
+    work_repository = WorkRepository(database_path)
+    work = work_repository.active_for_application(
+        application_id,
+        WorkType.CV_GENERATION,
+        assessment_id=assessment_id,
+    )
+    assert work is not None
+    token = "generation-finalizer"
+    work_repository.claim(work.id, token, "2026-08-07T10:30:00Z")
+    generation = replace(
+        completed_generation(database_path, application_id, assessment_id),
+        work_id=work.id,
+        worker_token=token,
+    )
+    with connect(database_path) as connection:
+        connection.execute(
+            """UPDATE work_items SET state = 'succeeded',
+            completed_at = ?, worker_token = NULL, finalizer_token = ?
+            WHERE id = ?""",
+            (
+                "2026-08-07T11:00:00.000000+00:00",
+                token,
+                work.id,
+            ),
+        )
+
+    with pytest.raises(CvGenerationStateError, match="does not match"):
+        CvGenerationRepository(database_path).add_completed(generation)
+
+    current = work_repository.get(work.id)
+    assert current.state.value == "succeeded"
+    assert current.finalizer_token == token
+
+
+def test_cv_generation_completion_race_cleans_artefacts_and_keeps_new_owner(
+    database_path: str, tmp_path: Path
+) -> None:
+    application_id, assessment_id, _, artefacts = prepared_workflow(
+        database_path, tmp_path
+    )
+    work_repository = WorkRepository(database_path)
+    work = work_repository.active_for_application(
+        application_id,
+        WorkType.CV_GENERATION,
+        assessment_id=assessment_id,
+    )
+    assert work is not None
+    work_repository.claim(
+        work.id, "worker-a", "2026-08-07T12:00:00Z", lease_seconds=1
+    )
+
+    def reclaim_work() -> None:
+        assert work_repository.recover_stale("2026-08-07T12:02:00Z") == 1
+        work_repository.claim(work.id, "worker-b", "2026-08-07T12:03:00Z")
+
+    service, fake, _ = build_service(
+        database_path,
+        tmp_path,
+        cv_content(),
+        effect=reclaim_work,
+        artefacts=artefacts,
+    )
+
+    with pytest.raises(StaleWorkerError):
+        service.execute(
+            application_id,
+            assessment_id,
+            "2026-08-07T13:00:00+00:00",
+            work_id=work.id,
+            worker_token="worker-a",
+        )
+
+    current = work_repository.get(work.id)
+    assert current.state.value == "running"
+    assert current.worker_token == "worker-b"
+    assert len(fake.requests) == 1
+    assert (
+        CvGenerationRepository(database_path).list_for_application(
+            application_id
+        )
+        == []
+    )
+    assert (
+        Repository(database_path).get_application(application_id)[
+            "current_stage"
+        ]
+        == "Assessing"
+    )
+    assert list(artefacts.root.rglob("cv-content.json")) == []
+    assert list(artefacts.root.rglob("*.docx")) == []
+
 
 def test_completed_generation_rejects_missing_and_ineligible_inputs(
     database_path: str,
@@ -715,8 +1384,14 @@ def test_completed_generation_rejects_missing_and_ineligible_inputs(
 ) -> None:
     initialize_database(database_path)
     repository = CvGenerationRepository(database_path)
-    with pytest.raises(CvGenerationNotFoundError):
-        repository.add_completed(completed_generation(999, "missing"))
+    with pytest.raises(CvGenerationStateError):
+        repository.add_completed(
+            replace(
+                completed_generation(database_path, 999, "missing"),
+                work_id="work-id",
+                worker_token="worker-token",
+            )
+        )
 
     application_id = create_application(database_path)
     profile_path = prepare_private_inputs(tmp_path)
@@ -731,8 +1406,9 @@ def test_completed_generation_rejects_missing_and_ineligible_inputs(
     )
 
     with pytest.raises(CvGenerationStateError):
-        repository.add_completed(
-            completed_generation(application_id, assessment_id)
+        persist_generation(
+            database_path,
+            completed_generation(database_path, application_id, assessment_id),
         )
 
 
@@ -752,14 +1428,14 @@ def test_completed_generation_normalizes_valid_timestamp_formats(
         database_path, tmp_path
     )
     generation = replace(
-        completed_generation(application_id, assessment_id),
+        completed_generation(database_path, application_id, assessment_id),
         completed_at=completed_at,
     )
 
-    CvGenerationRepository(database_path).add_completed(generation)
+    persist_generation(database_path, generation)
 
     stored = CvGenerationRepository(database_path).get(generation.generation_id)
-    assert stored["completed_at"] == completed_at
+    assert stored["completed_at"] == canonical_timestamp(completed_at)
     normalized = datetime.fromisoformat(completed_at)
     if normalized.tzinfo is None:
         normalized = normalized.replace(tzinfo=UTC)
@@ -775,45 +1451,24 @@ def test_completed_generations_list_by_utc_instant_then_id(
         prepared_workflow(database_path, tmp_path)
     )
     assessment_ids = [first_assessment_id]
-    for _ in range(4):
-        assessment_ids.append(
-            seed_assessment(database_path, artefacts, profile_path)
-        )
-    generations = (
-        replace(
-            completed_generation(
-                application_id, assessment_ids[0], "generation-offset"
-            ),
-            completed_at="2026-08-07T12:30:00+02:00",
-        ),
-        replace(
-            completed_generation(
-                application_id, assessment_ids[1], "generation-utc"
-            ),
-            completed_at="2026-08-07T11:00:00+00:00",
-        ),
-        replace(
-            completed_generation(
-                application_id, assessment_ids[2], "generation-equal-a"
-            ),
-            completed_at="2026-08-07T13:00:00+02:00",
-        ),
-        replace(
-            completed_generation(
-                application_id, assessment_ids[3], "generation-equal-z"
-            ),
-            completed_at="2026-08-07T11:00:00+00:00",
-        ),
-        replace(
-            completed_generation(
-                application_id, assessment_ids[4], "generation-naive"
-            ),
-            completed_at="2026-08-07T11:30:00",
-        ),
+    seed_generations = (
+        ("generation-offset", "2026-08-07T12:30:00+02:00"),
+        ("generation-utc", "2026-08-07T11:00:00+00:00"),
+        ("generation-equal-a", "2026-08-07T13:00:00+02:00"),
+        ("generation-equal-z", "2026-08-07T11:00:00+00:00"),
+        ("generation-naive", "2026-08-07T11:30:00"),
     )
+    for generation_id, generation_completed_at in seed_generations:
+        assessment_ids.append(
+            seed_assessment(
+                database_path,
+                artefacts,
+                profile_path,
+                seed_generation_id=generation_id,
+                seed_generation_completed_at=generation_completed_at,
+            )
+        )
     repository = CvGenerationRepository(database_path)
-    for generation in generations:
-        repository.add_completed(generation)
 
     listed = repository.list_for_application(application_id)
 
@@ -825,11 +1480,11 @@ def test_completed_generations_list_by_utc_instant_then_id(
         "generation-offset",
     ]
     assert [row["completed_at"] for row in listed] == [
-        "2026-08-07T11:30:00",
-        "2026-08-07T11:00:00+00:00",
-        "2026-08-07T11:00:00+00:00",
-        "2026-08-07T13:00:00+02:00",
-        "2026-08-07T12:30:00+02:00",
+        "2026-08-07T11:30:00.000000+00:00",
+        "2026-08-07T11:00:00.000000+00:00",
+        "2026-08-07T11:00:00.000000+00:00",
+        "2026-08-07T11:00:00.000000+00:00",
+        "2026-08-07T10:30:00.000000+00:00",
     ]
 
 
@@ -840,33 +1495,22 @@ def test_completed_generations_list_preserves_python_timestamp_precision(
         prepared_workflow(database_path, tmp_path)
     )
     assessment_ids = [first_assessment_id]
-    for _ in range(2):
-        assessment_ids.append(
-            seed_assessment(database_path, artefacts, profile_path)
-        )
-    generations = (
-        replace(
-            completed_generation(
-                application_id, assessment_ids[0], "generation-basic"
-            ),
-            completed_at="20260807T120000+0000",
-        ),
-        replace(
-            completed_generation(
-                application_id, assessment_ids[1], "generation-micro-early"
-            ),
-            completed_at="2026-08-07T11:00:00.000001+00:00",
-        ),
-        replace(
-            completed_generation(
-                application_id, assessment_ids[2], "generation-micro-late"
-            ),
-            completed_at="2026-08-07T11:00:00.000002+00:00",
-        ),
+    seed_generations = (
+        ("generation-basic", "20260807T120000+0000"),
+        ("generation-micro-early", "2026-08-07T11:00:00.000001+00:00"),
+        ("generation-micro-late", "2026-08-07T11:00:00.000002+00:00"),
     )
+    for generation_id, generation_completed_at in seed_generations:
+        assessment_ids.append(
+            seed_assessment(
+                database_path,
+                artefacts,
+                profile_path,
+                seed_generation_id=generation_id,
+                seed_generation_completed_at=generation_completed_at,
+            )
+        )
     repository = CvGenerationRepository(database_path)
-    for generation in generations:
-        repository.add_completed(generation)
 
     listed = repository.list_for_application(application_id)
 
@@ -899,12 +1543,12 @@ def test_completed_generation_rejects_malformed_timestamps(
         database_path, tmp_path
     )
     generation = replace(
-        completed_generation(application_id, assessment_id),
+        completed_generation(database_path, application_id, assessment_id),
         completed_at=completed_at,
     )
 
     with pytest.raises(ValueError, match=message):
-        CvGenerationRepository(database_path).add_completed(generation)
+        persist_generation(database_path, generation)
 
     assert (
         CvGenerationRepository(database_path).list_for_application(
@@ -928,12 +1572,12 @@ def test_completed_generation_rejects_assessment_backdating(
         completed_at="2026-08-07T11:00:00+00:00",
     )
     generation = replace(
-        completed_generation(application_id, assessment_id),
+        completed_generation(database_path, application_id, assessment_id),
         completed_at="2026-08-07T10:30:00+00:00",
     )
 
-    with pytest.raises(ValueError, match="assessment completion"):
-        CvGenerationRepository(database_path).add_completed(generation)
+    with pytest.raises(ValueError, match="current work activity"):
+        persist_generation(database_path, generation)
 
 
 def test_completed_generation_rejects_stage_backdating(
@@ -950,12 +1594,12 @@ def test_completed_generation_rejects_stage_backdating(
             ("2026-08-07T12:00:00+00:00", application_id),
         )
     generation = replace(
-        completed_generation(application_id, assessment_id),
+        completed_generation(database_path, application_id, assessment_id),
         completed_at="2026-08-07T11:00:00+00:00",
     )
 
     with pytest.raises(ValueError, match="current stage"):
-        CvGenerationRepository(database_path).add_completed(generation)
+        persist_generation(database_path, generation)
 
 
 def test_generation_timestamp_failure_cleans_artefacts_and_row(
@@ -968,8 +1612,10 @@ def test_generation_timestamp_failure_cleans_artefacts_and_row(
         database_path, tmp_path, cv_content(), artefacts=artefacts
     )
 
-    with pytest.raises(ValueError, match="assessment completion"):
-        service.execute(
+    with pytest.raises(ValueError, match="current work activity"):
+        run_generation(
+            service,
+            database_path,
             application_id,
             assessment_id,
             "2026-08-07T09:30:00+00:00",
@@ -1035,10 +1681,13 @@ def test_completed_generation_serializes_racing_stage_transition(
         lambda path: PausingConnection(path),
     )
 
-    def persist_generation() -> None:
+    def persist_in_thread() -> None:
         try:
-            CvGenerationRepository(database_path).add_completed(
-                completed_generation(application_id, assessment_id)
+            persist_generation(
+                database_path,
+                completed_generation(
+                    database_path, application_id, assessment_id
+                ),
             )
         except Exception as error:  # noqa: BLE001 - propagate thread failure
             errors.append(error)
@@ -1080,7 +1729,7 @@ def test_completed_generation_serializes_racing_stage_transition(
         finally:
             stage_write_finished.set()
 
-    persistence_thread = Thread(target=persist_generation)
+    persistence_thread = Thread(target=persist_in_thread)
     stage_thread = Thread(target=change_stage)
     persistence_thread.start()
     try:
@@ -1133,7 +1782,9 @@ def test_candidate_write_failure_removes_partial_generation(
     )
 
     with pytest.raises(OSError, match="simulated candidate"):
-        service.execute(
+        run_generation(
+            service,
+            database_path,
             application_id,
             assessment_id,
             "2026-08-07T11:00:00+00:00",
@@ -1157,7 +1808,9 @@ def test_completed_generation_is_immutable(
     service, _, _ = build_service(
         database_path, tmp_path, cv_content(), artefacts=artefacts
     )
-    execution = service.execute(
+    execution = run_generation(
+        service,
+        database_path,
         application_id,
         assessment_id,
         "2026-08-07T11:00:00+00:00",
