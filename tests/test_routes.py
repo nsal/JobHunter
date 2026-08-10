@@ -234,7 +234,21 @@ async def test_explicit_submitted_transition_populates_date(
     )
     location = created.headers["location"]
     detail = await client.get(location)
+    assert '<option value="Ready for review"' in detail.text
+    assert "Ready to apply" not in detail.text
     assert '<option value="Submitted"' in detail.text
+
+    review = await client.post(
+        f"{location}/stages",
+        data={
+            "stage": "Ready for review",
+            "effective_from": "2099-01-01T08:00:00",
+            "stage_description": "Draft ready for human review",
+        },
+        headers={"HX-Request": "true"},
+    )
+    assert review.status_code == 200
+    assert "Current stage: <strong>Ready for review</strong>" in review.text
 
     submitted = await client.post(
         f"{location}/stages",
@@ -278,6 +292,17 @@ async def test_stage_routes_reject_invalid_transitions(
     )
     assert invalid.status_code == 422
     assert "Choose a valid stage." in invalid.text
+
+    removed = await client.post(
+        f"{location}/stages",
+        data={
+            "stage": "Ready to apply",
+            "effective_from": "2099-01-01T09:00:00",
+        },
+        headers={"HX-Request": "true"},
+    )
+    assert removed.status_code == 422
+    assert "Choose a valid stage." in removed.text
 
     backdated = await client.post(
         f"{location}/stages",

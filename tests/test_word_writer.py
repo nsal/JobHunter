@@ -26,6 +26,30 @@ from app.documents.word_writer import (
 from app.settings import CvLayoutSettings
 
 
+def test_documents_public_boundary_only_exposes_docx_writer_contract() -> None:
+    from app import documents
+
+    assert documents.__all__ == [
+        "CandidateDocument",
+        "WordWriter",
+        "WordWriterError",
+    ]
+    assert {
+        "CandidateDocument",
+        "WordWriter",
+        "WordWriterError",
+    } == set(documents.__all__)
+    for removed_name in (
+        "DocumentVerifier",
+        "FontInventory",
+        "ProcessRunner",
+        "WordVerificationRequest",
+        "WordVerificationResult",
+        "WordVerifier",
+    ):
+        assert not hasattr(documents, removed_name)
+
+
 def layout() -> CvLayoutSettings:
     return CvLayoutSettings.model_validate(
         {

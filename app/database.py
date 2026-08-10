@@ -8,7 +8,7 @@ from pathlib import Path
 STAGES = (
     "Assessing",
     "Mismatch",
-    "Ready to apply",
+    "Ready for review",
     "Submitted",
     "Viewed",
     "Call",

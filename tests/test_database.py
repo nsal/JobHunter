@@ -137,6 +137,14 @@ def test_stage_history_constraints(database_path: str) -> None:
                 """INSERT INTO application_stage_history(
                     application_id, stage, stage_sequence, effective_from,
                     is_current
+                ) VALUES (1, 'Ready to apply', 2,
+                          '2026-01-02T00:00:00', 0)"""
+            )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """INSERT INTO application_stage_history(
+                    application_id, stage, stage_sequence, effective_from,
+                    is_current
                 ) VALUES (1, 'Mismatch', 2,
                           '2026-01-02T00:00:00', 1)"""
             )

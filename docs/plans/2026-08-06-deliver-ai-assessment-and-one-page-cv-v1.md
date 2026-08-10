@@ -4,7 +4,7 @@
 
 - Deliver one complete local workflow from immutable job description through
   evidence-cited assessment, deterministic scoring, tailored draft CV content,
-  DOCX generation, and authoritative Microsoft Word page verification.
+  and deterministic DOCX generation targeted at one A4 page.
 - Keep FastAPI responsive by placing durable work in SQLite and running it
   through a separately supervised dispatcher with up to three spawned workers.
 - Start new applications before submission, show assessment/work progress, and
@@ -14,18 +14,19 @@
 - Keep v1 intentionally narrow: OpenAI only, the current raw Markdown profile,
   one private DOCX template, small private YAML layout settings, no profile
   indexing, and no automated CV refitting.
-- Treat generated CV content as an evidence-cited AI draft that requires human
-  factual and editorial review before use. Defer semantic fact-level grounding
-  to the later structured customer-profile feature.
+- Treat generated CV content and DOCX output as an editable AI draft requiring
+  human factual, editorial, and pagination review before PDF export and use.
+  Defer semantic fact-level grounding and automated final-PDF rendering to
+  later features.
 
 ## Context (from discovery)
 
 - JobHunter is a local Python 3.14 FastAPI/Jinja/SQLite application. Routes and
   wiring are concentrated in `app/main.py`, schema creation in
   `app/database.py`, and persistence in `app/repository.py`.
-- The current schema has only `applications` and `submission_history`. Creating
-  an application automatically creates `Submitted` as stage sequence 1, and
-  repository queries assume that row always exists.
+- The fresh schema has `applications`, immutable stage history, assessments,
+  and CV generations. New applications begin at `Assessing`; `Submitted` is a
+  later manual transition.
 - The current application supports CV uploads through `app/cv_uploads.py`,
   path validation/delivery through `app/cv_files.py`, and dashboard/detail CV
   actions. These features and their tests will be removed, not preserved.
@@ -51,12 +52,13 @@
 - Every task that changes code must add or update tests for every new and
   modified path. Do not defer tests to a later task.
 - Run `uv run pytest` after each task and do not continue while it is failing.
-- Use deterministic fakes for OpenAI, clocks, process launching, subprocesses,
-  and Microsoft Word in the ordinary test suite.
+- Use deterministic fakes for OpenAI, clocks, and process launching in the
+  ordinary test suite.
 - Keep provider-specific code behind a narrow structured-generation protocol.
   Domain services must depend on the protocol, not the OpenAI adapter.
 - Keep scoring, lifecycle decisions, path validation, citation integrity, and
-  page acceptance deterministic after structured model output is returned.
+  DOCX layout configuration deterministic after structured model output is
+  returned.
 - Use atomic file replacement and short SQLite write transactions. Child
   processes open their own database/provider resources and receive IDs/tokens
   only.
@@ -71,7 +73,7 @@
 
 - **Schema/repository tests:** Create only fresh temporary databases. Verify
   constraints, nullable submission dates, immutable history, atomic work
-  creation, active-work uniqueness, worker tokens, leases, retries, and
+  creation, active-work uniqueness, worker tokens, retries, and
   lifecycle transitions.
 - **Unit tests:** Cover settings, path containment, Markdown block IDs, schema
   validation, evidence references, score arithmetic, hard gates, safe
@@ -84,15 +86,15 @@
   override, technical failure, and resume paths.
 - **Process tests:** Inject fake clocks and process launchers for normal tests.
   Add one bounded real-spawn smoke test proving child SQLite isolation.
-- **Document tests:** Inspect DOCX structure and fake Word PDF export in the
-  normal suite. Keep real Microsoft Word verification opt-in and macOS-only.
+- **Document tests:** Inspect DOCX structure, layout settings, safe metadata,
+  and atomic output in the normal suite. Tests do not claim to render or count
+  pages; one-page suitability is reviewed by the user in their editor.
 - **Route/UI tests:** Use httpx2/Jinja assertions for setup readiness, consent,
   immediate redirects, polling, statuses, immutable JDs, mismatch override,
   retries, dashboard badges, and Finder actions.
 - **Synthetic model cases:** Commit non-sensitive profile/JD fixtures covering
   mandatory requirements, evidence matches, hard gates, invalid citations,
-  exact cited identity values, confidentiality rejection, score boundaries,
-  and one-page/overflow documents.
+  exact cited identity values, confidentiality rejection, and score boundaries.
 - **No browser E2E framework:** Do not add Playwright or similar solely for v1;
   record focused manual browser checks under Post-Completion.
 - **Final automated gate:** Run `uv run pytest`, `uv run ruff check .`,
@@ -107,8 +109,8 @@
   criterion.
 - Keep this file synchronized with actual paths, schema, commands, and results.
 - Record focused and full-suite results after every task.
-- Do not archive the plan until all automated gates pass and applicable live
-  OpenAI/macOS Word checks have been recorded.
+- Do not archive the plan until all automated gates pass and the manual DOCX
+  review/PDF handoff boundary is recorded.
 
 ## Solution Overview
 
@@ -136,25 +138,28 @@ Current private profile.md + immutable application JD
                                       |
                                   DOCX writer
                                       |
-                           Microsoft Word PDF export
+                         Ready for review
                                       |
-                               exactly one page
+                         human review/amendment
+                                      |
+                         manual PDF export
 ```
 
 One `jobhunter` launcher supervises FastAPI/Uvicorn and a dispatcher as
 separate long-lived processes. FastAPI writes durable work and returns
 immediately. The dispatcher claims SQLite work and runs at most three spawned
-children. Workers open independent resources. Microsoft Word access is
-serialized by a SQLite resource lease while other workers may continue model
-work.
+children. Workers open independent resources. Document generation ends after
+the editable DOCX is written and persisted; there is no renderer or desktop
+automation boundary in v1.
 
 The assessment worker makes one structured OpenAI call over numbered profile
 and JD blocks. Application code validates every reference and computes the
 score and outcome. The CV worker makes one structured call for evidence-cited
-draft `CvContent`, applies it deterministically to a private template, and asks
-Word to export a temporary PDF. Exactly one page succeeds; any other page count
-fails visibly. The candidate remains an AI draft requiring human review. There
-is no automatic fit-revision call in v1.
+draft `CvContent` and applies it deterministically to a private template. The
+writer targets one A4 page through bounded content and layout settings, but the
+candidate remains an editable draft requiring human factual, editorial, and
+pagination review. There is no automatic fit-revision or PDF-rendering call in
+v1.
 
 ## Technical Details
 
@@ -180,10 +185,10 @@ is no automatic fit-revision call in v1.
 
 - Rebuild the development schema around `applications`,
   `application_stage_history`, `consents`, `work_items`, `assessments`,
-  `cv_generations`, and `resource_leases`.
+  and `cv_generations`.
 - Add `applications.created_at`, required immutable `full_jd`, and a unique,
   stable, relative `artefact_directory`. Remove `cv_path`.
-- Add lifecycle stages `Assessing`, `Mismatch`, and `Ready to apply` to the
+- Add lifecycle stages `Assessing`, `Mismatch`, and `Ready for review` to the
   existing post-submission stages. New applications begin at `Assessing`.
 - Derive `submitted_date` from the first real `Submitted` transition and show
   an em dash when it does not exist.
@@ -234,7 +239,7 @@ is no automatic fit-revision call in v1.
   checkpoint hashes, timestamps, heartbeat/lease data, and a sanitized error.
 - Claim work transactionally. Only the current worker token may heartbeat,
   checkpoint, or finalize it.
-- Retry transient provider/process/Word timeouts once. Do not retry invalid
+- Retry transient provider/process timeouts once. Do not retry invalid
   configuration, unsafe paths, invalid citations or cited identity values,
   exhausted schema repair, or a deterministic over-page result.
 - Validate and atomically replace checkpoint files before marking their step
@@ -243,14 +248,16 @@ is no automatic fit-revision call in v1.
 - Because profile snapshots are excluded, a changed profile hash invalidates a
   checkpoint and requires a new assessment.
 - Initial mismatch moves `Assessing` to `Mismatch`. A passing assessment stays
-  `Assessing` until page-verified generation moves it to `Ready to apply`.
-- `Ready to apply` means the draft artefact passed technical generation and
-  pagination checks; it does not replace human factual/editorial review.
-- Successful override generation moves `Mismatch` to `Ready to apply` without
-  changing the original score/outcome. Technical failures leave the current
-  lifecycle unchanged.
+  `Assessing` until deterministic DOCX generation moves it to `Ready for
+  review`.
+- `Ready for review` means the editable draft artefact was generated
+  successfully and targeted at one A4 page; it does not claim factual,
+  editorial, pagination, PDF-export, or submission completion.
+- Successful override generation moves `Mismatch` to `Ready for review`
+  without changing the original score/outcome. Technical failures leave the
+  current lifecycle unchanged.
 
-### Artefacts and Word verification
+### Artefacts and DOCX generation
 
 - Store each application under a safe stable relative directory beneath
   `private/artefacts/<company>/<yyyy-mm-dd_role>/`, appending the application
@@ -263,11 +270,11 @@ is no automatic fit-revision call in v1.
   profile identity and the user-entered application role.
 - Apply the private template/YAML deterministically; the writer never rewrites
   model content.
-- Invoke Microsoft Word on macOS without a shell, export to a temporary PDF,
-  count pages, and record renderer/version/input hashes. Delete the temporary
-  PDF after inspection.
-- Accept exactly one page. Persist a safe failure and the candidate DOCX when
-  the result is zero, more than one, or unverifiable.
+- Target one A4 portrait page through the configured dimensions, margins,
+  fonts, spacing, and bounded content. Persist the editable DOCX atomically.
+- Do not render the DOCX, count PDF pages, or record renderer metadata in v1.
+  The user opens and amends the DOCX, confirms pagination manually, exports the
+  final PDF, submits it, and records `Submitted` through the stage editor.
 
 ### User interface
 
@@ -283,7 +290,8 @@ is no automatic fit-revision call in v1.
 - Show score, mandatory coverage, outcome, concise analysis, gaps, model, and
   timestamps after assessment.
 - Offer `Generate CV anyway` only for a completed mismatch and Retry only for a
-  failed work item.
+  failed work item. A successful generation exposes the editable draft as
+  `Ready for review`.
 - Replace the dashboard CV column and all old CV controls with assessment/work
   status and `Open artefacts`.
 - Implement Finder opening as a POST-only, origin-checked endpoint that resolves
@@ -301,8 +309,8 @@ is no automatic fit-revision call in v1.
 - **Implementation Steps:** repository changes, tests, generated schemas,
   public fixtures/examples, and automated verification achievable here.
 - **Post-Completion:** real credentials/models, private profile/template setup,
-  Microsoft Word permissions, live model verification, manual browser/Word
-  inspection, and GitHub issue/PR coordination.
+  live model verification, manual browser/editor inspection, and GitHub
+  issue/PR coordination.
 
 ## Implementation Steps
 
@@ -363,8 +371,7 @@ Task 1 verification: `uv run pytest` — 46 passed.
 - Modify: `tests/test_repository.py`
 
 - [x] Add direct bounded dependencies with `uv add` for OpenAI, Pydantic, YAML,
-  Markdown tokenization, DOCX generation, and PDF page inspection; update the
-  lockfile.
+  Markdown tokenization, and DOCX generation; update the lockfile.
 - [x] Define typed tracked settings for OpenAI routing/timeouts, scoring
   threshold/taxonomy version, queue polling, heartbeat, lease, and concurrency
   three; reject secrets in tracked YAML.
@@ -601,34 +608,39 @@ generator — 35 passed; full suite — 265 passed; Ruff, mypy, schema check,
 lockfile check, local-link audit, and diff check passed. README and AGENTS
 require no changes.
 
-### Task 7: Verify DOCX pagination through Microsoft Word
+### Task 7: Generate one-page-targeted DOCX drafts for manual review
 
 **Files:**
-- Create: `app/documents/word_verifier.py`
-- Create: `app/documents/word_export.applescript`
-- Create: `tests/test_word_verifier.py`
+- Modify: `app/documents/__init__.py`
+- Modify: `app/documents/word_writer.py`
+- Modify: `tests/test_word_writer.py`
+- Modify: `app/database.py`
+- Modify: `tests/test_database.py`
+- Modify: `tests/test_repository.py`
+- Modify: `tests/test_cv_generator.py`
+- Modify: `tests/test_routes.py`
 - Modify: `pyproject.toml`
+- Modify: `uv.lock`
 
-- [ ] Preflight macOS, Microsoft Word availability, automation permission,
-  configured fonts/page settings, and a bounded export timeout.
-- [ ] Invoke AppleScript/Word with an argument array and no shell, export the
-  candidate to a private temporary PDF, and count pages with the configured PDF
-  library.
-- [ ] Accept exactly one page; retain the candidate DOCX and return a safe
-  deterministic failure for zero, multiple, or unverifiable pages.
-- [ ] Record candidate/template/layout hashes, page count, renderer/version,
-  timing, and sanitized diagnostics; always remove temporary verification PDF
-  files.
-- [ ] Keep Word access behind a typed verifier interface so normal tests can use
-  a fake and the queue can later provide resource serialization.
-- [ ] Write fake-process tests for one-page success, overflow, missing Word,
-  denied permission, timeout, conversion failure, corrupt PDF, cleanup, and
-  redaction.
-- [ ] Add a marked opt-in macOS integration test using only public synthetic
-  fixtures; prove ordinary `uv run pytest` never launches Word.
-- [ ] Run `uv run pytest`; record the passing count before task 8.
+- [x] Rename `Ready to apply` to `Ready for review` in the fresh lifecycle
+  allowlist and all generation, repository, and route fixtures.
+- [x] Preserve manual `Submitted` transitions and derive the submitted date
+  from the first real transition after human review.
+- [x] Remove the unused Word verifier, AppleScript adapter, PDF dependency,
+  macOS pytest marker, renderer metadata, and Word resource-boundary surface.
+- [x] Keep `CandidateDocument`, `WordWriter`, and `WordWriterError` as the
+  supported document package exports.
+- [x] Keep deterministic A4 portrait DOCX generation, safe paths, atomic
+  writes, malformed-input failures, and unavailable-font coverage. These tests
+  establish the writer contract and do not claim to prove rendered page count.
+- [x] Run focused lifecycle, generation, route, and writer tests before task 8.
 
-### Task 8: Add durable work state, checkpoints, retries, and resource leases
+Task 7 Fix 3 verification: the focused lifecycle, generation, route, and DOCX
+writer suite passed after the manual-review boundary was implemented. Automatic
+PDF rendering and page-count verification are deferred until a future feature
+selects an authoritative renderer.
+
+### Task 8: Add durable work state, checkpoints, and retries
 
 **Files:**
 - Create: `app/work/__init__.py`
@@ -642,7 +654,7 @@ require no changes.
 - Modify: `tests/test_repository.py`
 - Modify: `tests/test_assessment_service.py`
 
-- [ ] Add `work_items` and `resource_leases` with typed/check-constrained
+- [ ] Add `work_items` with typed/check-constrained
   states, work types, attempts, availability, steps, tokens, heartbeats,
   timestamps, checkpoint hashes, and sanitized errors.
 - [ ] Enforce one queued/running work item per application and transactional
@@ -650,8 +662,8 @@ require no changes.
   recovery operations.
 - [ ] Implement one transient retry and deterministic failure classification;
   reject stale tokens and make completion/failure idempotent.
-- [ ] Add an expiring `microsoft_word` lease and require ownership before Word
-  verification/finalization.
+- [ ] Keep document generation independent of desktop applications and
+  finalize work after atomic DOCX persistence.
 - [ ] Atomically create application, initial assessment, and queued assessment
   work; atomically enqueue automatic generation after a matched assessment.
 - [ ] Implement mismatch override generation while preserving the original
@@ -659,9 +671,9 @@ require no changes.
 - [ ] Reuse validated assessment/CvContent checkpoints only when profile, JD,
   prompt, schema, template, and layout hashes still match.
 - [ ] Write work/repository tests for ordinary state transitions, concurrency
-  constraints, duplicate work, stale tokens, heartbeat/lease expiry, retry
-  exhaustion, Word serialization, checkpoint reuse/invalidation, atomic
-  initial work, automatic generation, and override generation.
+  constraints, duplicate work, stale tokens, heartbeat expiry, retry
+  exhaustion, checkpoint reuse/invalidation, atomic initial work, automatic
+  generation, and override generation.
 - [ ] Write error tests for interrupted writes, deterministic failures,
   idempotent finalization, and unchanged lifecycle after technical failure.
 - [ ] Run `uv run pytest`; record the passing count before task 9.
@@ -684,21 +696,20 @@ require no changes.
   `spawn` semantics, refill slots immediately after exits, and use the
   configured idle poll interval only when no slot/work event occurs.
 - [ ] Pass work IDs/tokens only; create SQLite, settings, provider, artefact,
-  assessment, CV, and Word resources inside each worker.
+  assessment, and CV resources inside each worker.
 - [ ] Dispatch assessment and CV-generation step pipelines with heartbeat,
-  checkpoint, retry, lifecycle, and Word-lease integration.
+  checkpoint, retry, and lifecycle integration.
 - [ ] Recover abandoned running work after bounded expiry and persist safe
   spawn/crash/exit diagnostics.
 - [ ] Support graceful termination without accepting new work, orphaning
-  children, sharing inherited SQLite connections, or leaving Word leases
-  permanently held.
+  children, or sharing inherited SQLite connections.
 - [ ] Write fake-clock/launcher tests for idle polling, burst work, concurrency
   three, immediate reuse, mixed work types, crash/retry, restart recovery, and
-  graceful shutdown.
+  graceful shutdown without desktop automation.
 - [ ] Write runner tests for independent resource construction, step resume,
   matched/mismatch/override lifecycle, deterministic failure, and redaction.
 - [ ] Add a bounded real-spawn smoke test proving child SQLite isolation and
-  completion; keep it deterministic and free of OpenAI/Word calls.
+  completion; keep it deterministic and free of OpenAI/desktop calls.
 - [ ] Run `uv run pytest`; record the passing count before task 10.
 
 ### Task 10: Add setup readiness and OpenAI acknowledgement UI
@@ -758,9 +769,10 @@ require no changes.
   timestamps, generation state, and safe failure/retry guidance.
 - [ ] Add Retry for failed work and `Generate CV anyway` for completed
   mismatches; reject duplicate/invalid actions and preserve mismatch results.
-- [ ] Move to `Ready to apply` only after successful one-page verification,
-  label the candidate as requiring human factual/editorial review, and retain
-  explicit manual `Submitted` transition behavior.
+- [ ] Move to `Ready for review` after successful deterministic DOCX
+  generation targeted at one page, label the candidate as requiring human
+  factual/editorial/pagination review, and retain explicit manual `Submitted`
+  transition behavior.
 - [ ] Replace the dashboard CV column with compact assessment/work status and
   add `Open artefacts` on dashboard/detail where the directory exists.
 - [ ] Implement POST-only, origin-checked, containment-checked Finder opening
@@ -790,8 +802,8 @@ require no changes.
   semantic profile parsing, while invalid citations, uncited identity values,
   confidential wording, and changed inputs still fail deterministically.
 - [ ] Verify matched and forced-mismatch flows produce the required filename
-  and reach `Ready to apply` only after an exactly-one-page Word result; verify
-  the state does not imply completion of human factual/editorial review.
+  and reach `Ready for review` after deterministic DOCX generation; verify the
+  state does not imply completion of human factual/editorial/pagination review.
 - [ ] Verify deterministic over-page, provider, process, configuration, and
   path failures remain visible/recoverable without changing lifecycle
   incorrectly or leaking private content.
@@ -815,11 +827,11 @@ require no changes.
 - [ ] Document OpenAI configuration/credentials, private setup, remote-data
   acknowledgement, lifecycle, scoring, generated artefacts, Finder handoff,
   evidence-cited draft status, required human factual/editorial review, and
-  manual Word/PDF workflow.
-- [ ] Document macOS/Microsoft Word prerequisites, permissions, expected
-  failures, opt-in checks, arbitrary-Markdown grounding limitations, and the
-  deferred structured customer-profile roadmap.
-- [ ] Record all automated counts and applicable live OpenAI, Word, browser,
+  manual DOCX/PDF workflow.
+- [ ] Document the editable DOCX review, manual pagination confirmation, PDF
+  export, and `Submitted` handoff. Record automated PDF rendering as deferred
+  without selecting a renderer.
+- [ ] Record all automated counts and applicable live OpenAI, browser,
   restart-recovery, and burst-concurrency verification results in this plan.
 - [ ] Update `AGENTS.md` only for a genuinely reusable project-wide pattern and
   add/update documentation tests only if executable/documented behavior is
@@ -829,9 +841,9 @@ require no changes.
 
 ## Post-Completion
 
-*These items require private inputs, desktop applications, credentials, or
-external repository coordination. Record applicable results before archiving
-the implementation plan.*
+*These items require private inputs, credentials, or external repository
+coordination. Record applicable results before archiving the implementation
+plan.*
 
 **Manual verification:**
 
@@ -841,16 +853,15 @@ the implementation plan.*
 - Set `OPENAI_API_KEY`, review the configured model/data-handling policy, grant
   the in-app acknowledgement, and run one non-sensitive live assessment and CV
   generation before using the real profile.
-- On macOS, grant Microsoft Word automation permission and run the opt-in Word
-  test for one known one-page document and one deliberate overflow document.
-- Review matched, mismatch, override, retry, and over-page states in a supported
+- Review matched, mismatch, override, and retry states in a supported
   browser; confirm polling stops and errors expose no private content or paths.
 - Submit more than three synthetic applications and observe queueing, FastAPI
-  responsiveness, slot reuse, Word serialization, process cleanup, and restart
-  recovery.
-- Open an application directory from dashboard/detail, review the DOCX in
-  Word, verify every factual claim and disclosure boundary against the cited
-  profile evidence, edit if necessary, and manually export the final PDF.
+  responsiveness, slot reuse, process cleanup, and restart recovery.
+- Open an application directory from dashboard/detail, review the editable
+  DOCX in the preferred editor, verify every factual claim and disclosure
+  boundary against the cited profile evidence, confirm one-page pagination,
+  edit if necessary, and manually export the final PDF before recording
+  `Submitted`.
 
 **External system and repository actions:**
 

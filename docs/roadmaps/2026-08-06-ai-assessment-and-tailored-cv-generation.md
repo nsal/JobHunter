@@ -13,8 +13,8 @@ The first stage is specified separately in
 
 ## Guiding decisions
 
-- Keep FastAPI responsive by running AI and Microsoft Word work outside the
-  web process.
+- Keep FastAPI responsive by running AI and document-generation work outside
+  the web process.
 - Use a supervised dispatcher and a durable SQLite queue for asynchronous
   execution.
 - Keep private profiles, templates, settings, consent state, and generated
@@ -22,9 +22,8 @@ The first stage is specified separately in
 - Require structured model output, cited profile/job-description evidence, and
   deterministic application-side scoring.
 - Keep lifecycle stage separate from work status.
-- Require successful Microsoft Word verification before calling a generated
-  DOCX one page.
-- Preserve manual review and final PDF export as user responsibilities.
+- Generate an editable DOCX targeted at one A4 page, then preserve factual,
+  editorial, pagination review, and final PDF export as user responsibilities.
 - Add provider and workflow complexity only when a completed earlier stage
   demonstrates the need.
 
@@ -56,9 +55,9 @@ Application + immutable JD + current profile.md
                   private template + YAML
                               |
                               v
-                    Microsoft Word check
+                    Ready for review
                               |
-                    exactly one page
+                 manual pagination and PDF export
 ```
 
 Scope:
@@ -66,7 +65,7 @@ Scope:
 - Rebuild the development SQLite schema directly; no migration framework or
   legacy-data conversion is required before production data exists.
 - Remove the old CV upload, preview, download, and storage implementation.
-- Add `Assessing`, `Mismatch`, and `Ready to apply`; record `Submitted` only
+- Add `Assessing`, `Mismatch`, and `Ready for review`; record `Submitted` only
   when the user explicitly applies.
 - Read the current private Markdown profile when work starts. Record its hash,
   but do not build an index, require profile approval, or retain a snapshot.
@@ -75,10 +74,9 @@ Scope:
 - Use one structured assessment call, deterministic scoring, and one
   structured CV-content call.
 - Use a private DOCX template and small private YAML layout settings.
-- Automatically export through Microsoft Word and fail visibly unless the
-  candidate is exactly one page. Do not refit it automatically.
-- Run one dispatcher with up to three spawned workers; serialize Microsoft
-  Word access.
+- Generate an editable DOCX targeted at one page. Do not render or refit it
+  automatically; the user confirms pagination and exports the final PDF.
+- Run one dispatcher with up to three spawned workers.
 - Support initial automatic generation, mismatch override, bounded retry,
   checkpoint reuse, polling, and safe artefact-directory opening.
 
@@ -91,8 +89,8 @@ Deferred from Stage 1:
 - Reassessment, regeneration, and custom-instruction workflows.
 - Legacy CV compatibility.
 - Multi-launcher coordination and distributed queue guarantees.
-- Final PDF tracking, in-app document editing, native notifications,
-  non-macOS rendering, and autonomous agents.
+- Final PDF tracking, in-app document editing, automated rendering, native
+  notifications, and autonomous agents.
 
 ## Stage 2: Profile management and local providers
 
@@ -111,8 +109,8 @@ profile inconsistency create a real usability, cost, or auditability problem.
 
 ## Stage 3: Automatic one-page fitting
 
-- Preserve stable content block identifiers through DOCX generation and Word
-  export.
+- Preserve stable content block identifiers through DOCX generation and the
+  later final-PDF workflow.
 - Produce a layout report that maps overflow back to CV content.
 - Add a CvFitReviewer capability that may shorten or restructure the least
   relevant grounded content without inventing claims.
@@ -120,8 +118,9 @@ profile inconsistency create a real usability, cost, or auditability problem.
 - Expand synthetic evaluations to cover relevance preservation, unsupported
   claims, and deterministic stop conditions.
 
-Stage 3 should retain visible failure after the bounded limit and must never
-silently accept a document that Word reports as over the configured target.
+Stage 3 should retain visible failure after a bounded fitting limit and must
+never silently discard grounded content or claim pagination it has not
+verified.
 
 ## Stage 4: Workflow and operational maturity
 
@@ -133,7 +132,7 @@ silently accept a document that Word reports as over the configured target.
   operator tooling based on observed failures.
 - Consider cross-platform rendering/opening only with an authoritative page
   renderer and explicit acceptance criteria.
-- Consider final-document approval or PDF tracking only if manual Finder/Word
+- Consider final-document approval or PDF tracking only if manual Finder/editor
   handoff proves insufficient.
 
 ## Roadmap success criteria
@@ -146,4 +145,3 @@ silently accept a document that Word reports as over the configured target.
   output is validated.
 - Generated claims remain traceable to private profile evidence.
 - No stage begins by requiring deferred infrastructure from a later stage.
-

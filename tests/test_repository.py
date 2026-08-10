@@ -135,7 +135,7 @@ def test_explicit_submission_sets_the_first_submission_date(
 
     repository.add_stage(
         application_id,
-        "Ready to apply",
+        "Ready for review",
         "2026-01-02T09:00:00",
     )
     repository.add_stage(

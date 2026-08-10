@@ -726,7 +726,7 @@ def test_completed_generation_rejects_missing_and_ineligible_inputs(
     )
     Repository(database_path).add_stage(
         application_id,
-        "Ready to apply",
+        "Ready for review",
         "2026-08-07T11:00:00+00:00",
     )
 
@@ -1068,7 +1068,7 @@ def test_completed_generation_serializes_racing_stage_transition(
                     """INSERT INTO application_stage_history (
                         application_id, stage, stage_sequence,
                         effective_from, is_current
-                    ) VALUES (?, 'Ready to apply', ?, ?, 1)""",
+                    ) VALUES (?, 'Ready for review', ?, ?, 1)""",
                     (
                         application_id,
                         int(current["stage_sequence"]) + 1,
@@ -1100,7 +1100,7 @@ def test_completed_generation_serializes_racing_stage_transition(
         Repository(database_path).get_application(application_id)[
             "current_stage"
         ]
-        == "Ready to apply"
+        == "Ready for review"
     )
     assert (
         len(
