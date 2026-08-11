@@ -21,6 +21,18 @@ from app.settings import AiSettings
 OPENAI_API_BASE_URL = "https://api.openai.com/v1"
 
 
+def is_openai_credential_ready(
+    value: str | Mapping[str, str] | None,
+) -> bool:
+    """Return whether an OpenAI credential is present without padding."""
+    credential = (
+        value.get("OPENAI_API_KEY", "") if isinstance(value, Mapping) else value
+    )
+    if not credential:
+        return False
+    return credential == credential.strip()
+
+
 def create_structured_generator(
     settings: AiSettings,
     database_path: str | Path,
@@ -36,7 +48,7 @@ def create_structured_generator(
             retryable=False,
         )
     api_key = environment.get("OPENAI_API_KEY", "")
-    if not api_key or api_key != api_key.strip():
+    if not is_openai_credential_ready(api_key):
         raise StructuredGenerationError(
             ProviderErrorCode.CONFIGURATION,
             "The OpenAI API credential is not configured.",

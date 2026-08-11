@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from app.database import initialize_database
+from app.routes.setup import normalize_http_origin
 from app.settings import AiSettings, SettingsError, load_ai_settings
 from app.work.dispatcher import (
     FORCED_CLEANUP_TIMEOUT_SECONDS,
@@ -138,13 +139,14 @@ def _cleanup_dispatcher_process(process: ProcessLike) -> CleanupResult:
 
 def run_server(
     database_path: str | Path,
+    project_root: str | Path,
     host: str = "127.0.0.1",
     port: int = 8000,
 ) -> None:
     """Load and invoke the web process only when a child is started."""
     from app.main import run_server as actual_run_server
 
-    actual_run_server(database_path, host, port)
+    actual_run_server(database_path, project_root, host, port)
 
 
 def run_dispatcher(
@@ -199,6 +201,7 @@ class Launcher:
     ) -> None:
         if dispatcher_shutdown_timeout_seconds <= 0:
             raise ValueError("Dispatcher shutdown timeout must be positive.")
+        normalize_http_origin(host, port)
         self.database_path = str(Path(database_path).resolve())
         self.project_root = str(Path(project_root).resolve())
         self.settings = settings
@@ -255,6 +258,7 @@ class Launcher:
                 run_server,
                 (
                     self.database_path,
+                    self.project_root,
                     self.host,
                     self.port,
                 ),
@@ -353,6 +357,14 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     """Parse launcher options, validate configuration, and supervise."""
     arguments = _parser().parse_args(argv)
+    try:
+        normalize_http_origin(arguments.host, arguments.port)
+    except ValueError as error:
+        print(
+            f"JobHunter server configuration is invalid: {error}",
+            file=sys.stderr,
+        )
+        return 2
     try:
         settings = load_ai_settings(
             arguments.project_root / "config" / "ai.yaml"

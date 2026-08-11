@@ -8,11 +8,15 @@ import threading
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+from app import main as web_main
 from app.cli import (
     CleanupResult,
     Launcher,
     _cleanup_dispatcher_process,
     _cleanup_process,
+    main,
 )
 from app.settings import AiSettings, load_ai_settings
 
@@ -269,10 +273,11 @@ def test_launcher_stops_workers_after_dispatcher_leader_exit(
 
 def test_launcher_shutdown_returns_cleanly_without_orphans() -> None:
     created: list[FakeProcess] = []
+    launched: list[tuple[Any, tuple[Any, ...]]] = []
     stop = threading.Event()
 
     def factory(target: Any, args: tuple[Any, ...]) -> FakeProcess:
-        del target, args
+        launched.append((target, args))
         process = FakeProcess(cooperative=len(created) == 1)
         created.append(process)
         return process
@@ -294,6 +299,48 @@ def test_launcher_shutdown_returns_cleanly_without_orphans() -> None:
     assert not created[0].killed
     assert not created[1].terminated
     assert not created[1].killed
+    assert launched[0][1] == (
+        str(Path("/tmp/jobhunter.db").resolve()),
+        str(Path.cwd()),
+        "127.0.0.1",
+        8000,
+    )
+    assert launched[1][1][0:2] == (
+        str(Path("/tmp/jobhunter.db").resolve()),
+        str(Path.cwd()),
+    )
+
+
+def test_web_server_receives_project_root_and_trusted_origin(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    created: dict[str, object] = {}
+
+    def fake_create_app(*args: Any, **kwargs: Any) -> object:
+        created["args"] = args
+        created["kwargs"] = kwargs
+        return object()
+
+    def fake_uvicorn_run(application: object, **kwargs: object) -> None:
+        created["application"] = application
+        created["uvicorn"] = kwargs
+
+    monkeypatch.setattr(web_main, "create_app", fake_create_app)
+    monkeypatch.setattr("uvicorn.run", fake_uvicorn_run)
+
+    web_main.run_server(tmp_path / "jobhunter.db", tmp_path, "127.0.0.1", 8123)
+
+    assert created["args"] == (tmp_path / "jobhunter.db",)
+    assert created["kwargs"] == {
+        "project_root": tmp_path,
+        "trusted_origin": "http://127.0.0.1:8123",
+    }
+    assert created["uvicorn"] == {
+        "host": "127.0.0.1",
+        "port": 8123,
+        "log_level": "info",
+    }
 
 
 def test_launcher_reports_forced_dispatcher_shutdown() -> None:
@@ -505,6 +552,11 @@ def test_installed_console_command_rejects_invalid_options() -> None:
     )
 
     assert result.returncode != 0
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "::"])
+def test_launcher_rejects_wildcard_bind_hosts(host: str) -> None:
+    assert main(["--host", host]) == 2
 
 
 def test_launcher_initializes_schema_before_child_factory(

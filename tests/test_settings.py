@@ -11,7 +11,10 @@ from app.settings import (
     MAX_PROFILE_BYTES,
     SettingsError,
     load_ai_settings,
+    validate_layout_input,
     validate_private_inputs,
+    validate_profile_input,
+    validate_template_input,
 )
 
 
@@ -187,6 +190,25 @@ def test_private_inputs_validate_paths_types_layout_and_hashes(
     assert len(inputs.profile_sha256) == 64
     assert len(inputs.template_sha256) == 64
     assert len(inputs.layout_sha256) == 64
+
+
+def test_private_input_validators_compose_without_changing_hashes(
+    tmp_path: Path,
+) -> None:
+    profile_root = write_private_inputs(tmp_path)
+
+    profile = validate_profile_input(tmp_path)
+    template = validate_template_input(tmp_path)
+    layout_path, layout = validate_layout_input(tmp_path)
+    aggregate = validate_private_inputs(tmp_path)
+
+    assert profile == profile_root / "profile.md"
+    assert template == profile_root / "cv-template.docx"
+    assert layout_path == profile_root / "cv-layout.yaml"
+    assert layout == aggregate.layout
+    assert aggregate.profile_sha256
+    assert aggregate.template_sha256
+    assert aggregate.layout_sha256
 
 
 def test_private_inputs_reject_missing_corrupt_and_oversized_files(

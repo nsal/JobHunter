@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+{% block title %}Setup · JobHunter{% endblock %}
+{% block content %}
+<section class="setup-page">
+  <header class="page-heading">
+    <div>
+      <h1>Setup</h1>
+      <p>Check local inputs before sending profile data to OpenAI.</p>
+    </div>
+  </header>
+  {% include 'setup/_status.html' %}
+</section>
+{% endblock %}

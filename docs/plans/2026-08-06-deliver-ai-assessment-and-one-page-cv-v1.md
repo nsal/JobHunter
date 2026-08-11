@@ -818,22 +818,41 @@ required.
 - Create: `app/templates/setup/_status.html`
 - Modify: `app/templates/base.html`
 - Modify: `app/main.py`
+- Modify: `tests/conftest.py`
 - Create: `tests/test_setup_routes.py`
 
-- [ ] Add Setup navigation and a page showing profile/template/layout
+- [x] Add Setup navigation and a page showing profile/template/layout
   readiness, selected OpenAI model, safe validation errors, and current consent
   state without rendering private paths or content.
-- [ ] Add explicit acknowledge/revoke actions for remote profile transmission
+- [x] Add explicit acknowledge/revoke actions for remote profile transmission
   and require origin-safe POST requests.
-- [ ] Revalidate private files/config on page load and application submission;
+- [x] Revalidate private files/config on page load and application submission;
   do not add a filesystem watcher.
-- [ ] Block new application work with a clear action when setup or consent is
+- [x] Block new application work with a clear action when setup or consent is
   incomplete, while keeping existing application pages readable.
-- [ ] Write route/rendering tests for ready setup, acknowledgement, revocation,
+- [x] Write route/rendering tests for ready setup, acknowledgement, revocation,
   repeated actions, and application preflight success.
-- [ ] Write tests for missing/corrupt private inputs, missing credentials,
+- [x] Write tests for missing/corrupt private inputs, missing credentials,
   forged origin, safe error rendering, and no private content/path disclosure.
-- [ ] Run `uv run pytest`; record the passing count before task 11.
+- [x] Run `uv run pytest`; record the passing count before task 11.
+
+Task 10 verification: setup readiness, redacted private-input errors, explicit
+same-origin consent acknowledgement/revocation, missing-credential blocking,
+and application preflight are implemented. `uv run pytest` — 417 passed;
+`uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy app tests
+scripts`, `uv run python scripts/generate_ai_schemas.py --check`, `uv lock
+--check`, and `git diff --check` also passed.
+
+Task 10 Fix 1 verification for [issue #46](https://github.com/nsal/JobHunter/issues/46):
+consent mutations now require the configured normalized launcher origin;
+launcher project roots reach both web and dispatcher children; private-input
+readiness validates each input independently; setup and provider construction
+share the exact credential-presence rule; and blocked ordinary/HTMX forms
+render one safe setup alert and reject wildcard bind addresses before startup.
+Focused Task 1, 2, and 3 suites passed 56, 84, and 57 tests respectively;
+`uv run pytest` — 445 passed. Ruff, format, mypy,
+generated-schema, lockfile, and whitespace checks passed. No README or AGENTS
+change was required. The Fix 1 plan is archived in `docs/plans/completed/`.
 
 ### Task 11: Integrate asynchronous assessment, CV generation, and artefacts UI
 

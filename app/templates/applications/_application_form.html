@@ -3,6 +3,11 @@
     <h1>{{ submit_label }}</h1>
   </header>
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  {% if setup_error %}
+  <p class="error" role="alert">
+    {{ setup_error }} <a href="/setup">Open setup</a>
+  </p>
+  {% endif %}
   <form method="post" action="{{ action }}" hx-post="{{ action }}"
         hx-target="#application-form" hx-swap="outerHTML"
         class="application-form">

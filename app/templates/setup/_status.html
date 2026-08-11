@@ -1,0 +1,52 @@
+<section id="setup-status" aria-live="polite">
+  <h2>Readiness</h2>
+  <dl class="details setup-details">
+    <dt>Profile</dt>
+    <dd>{% if setup.profile_ready %}Ready{% else %}Missing or invalid{% endif %}</dd>
+    <dt>CV template</dt>
+    <dd>{% if setup.template_ready %}Ready{% else %}Missing or invalid{% endif %}</dd>
+    <dt>CV layout</dt>
+    <dd>{% if setup.layout_ready %}Ready{% else %}Missing or invalid{% endif %}</dd>
+    <dt>AI settings</dt>
+    <dd>{% if setup.settings_ready %}Ready{% else %}Missing or invalid{% endif %}</dd>
+    <dt>OpenAI credential</dt>
+    <dd>{% if setup.credentials_ready %}Configured{% else %}Missing{% endif %}</dd>
+    <dt>Assessment model</dt>
+    <dd>{{ setup.assessment_model or 'Unavailable' }}</dd>
+    <dt>CV model</dt>
+    <dd>{{ setup.cv_model or 'Unavailable' }}</dd>
+    <dt>Remote profile transmission</dt>
+    <dd>
+      {% if setup.consent.is_granted %}
+      Acknowledged
+      {% elif setup.consent.revoked_at %}
+      Revoked
+      {% else %}
+      Not acknowledged
+      {% endif %}
+    </dd>
+  </dl>
+
+  {% if setup.errors %}
+  <div class="error" role="alert">
+    <p>Setup is incomplete:</p>
+    <ul>
+      {% for error in setup.errors %}<li>{{ error }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <p>
+    Profile content is sent to OpenAI only after acknowledgement and is not
+    displayed on this page.
+  </p>
+  {% if setup.consent.is_granted %}
+  <form method="post" action="/setup/revoke">
+    <button type="submit">Revoke remote profile acknowledgement</button>
+  </form>
+  {% else %}
+  <form method="post" action="/setup/acknowledge">
+    <button type="submit">Acknowledge remote profile transmission</button>
+  </form>
+  {% endif %}
+</section>

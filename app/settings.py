@@ -363,31 +363,28 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def validate_private_inputs(
+def _private_input_path(
+    root: Path, path: str | Path | None, default_name: str
+) -> Path:
+    """Resolve one private input path relative to the project root."""
+    candidate = (
+        Path(path)
+        if path is not None
+        else Path("private/profile") / default_name
+    )
+    return candidate if candidate.is_absolute() else root / candidate
+
+
+def validate_profile_input(
     project_root: str | Path = ROOT,
     *,
     profile_path: str | Path | None = None,
-    template_path: str | Path | None = None,
-    layout_path: str | Path | None = None,
-) -> PrivateInputs:
-    """Validate the active profile, DOCX template, and layout configuration."""
+) -> Path:
+    """Validate the private profile and return its path."""
     root = Path(project_root).resolve()
     private_root = root / "private"
-    default_root = private_root / "profile"
-    profile = Path(profile_path or default_root / "profile.md")
-    template = Path(template_path or default_root / "cv-template.docx")
-    layout_file = Path(layout_path or default_root / "cv-layout.yaml")
-    if not profile.is_absolute():
-        profile = root / profile
-    if not template.is_absolute():
-        template = root / template
-    if not layout_file.is_absolute():
-        layout_file = root / layout_file
-
+    profile = _private_input_path(root, profile_path, "profile.md")
     _validate_private_file(profile, private_root, ".md", MAX_PROFILE_BYTES)
-    _validate_private_file(template, private_root, ".docx", MAX_TEMPLATE_BYTES)
-    _validate_private_file(layout_file, private_root, ".yaml", MAX_LAYOUT_BYTES)
-
     try:
         profile_text = profile.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as error:
@@ -396,20 +393,62 @@ def validate_private_inputs(
         raise SettingsError(
             f"Profile must contain non-whitespace text: {profile}"
         )
+    return profile
 
+
+def validate_template_input(
+    project_root: str | Path = ROOT,
+    *,
+    template_path: str | Path | None = None,
+) -> Path:
+    """Validate the private DOCX template and return its path."""
+    root = Path(project_root).resolve()
+    private_root = root / "private"
+    template = _private_input_path(root, template_path, "cv-template.docx")
+    _validate_private_file(template, private_root, ".docx", MAX_TEMPLATE_BYTES)
     if not zipfile.is_zipfile(template):
         raise SettingsError(f"CV template is not a valid DOCX file: {template}")
     try:
         Document(str(template))
     except Exception as error:
         raise SettingsError(f"CV template is corrupt: {template}") from error
+    return template
 
+
+def validate_layout_input(
+    project_root: str | Path = ROOT,
+    *,
+    layout_path: str | Path | None = None,
+) -> tuple[Path, CvLayoutSettings]:
+    """Validate the private CV layout and return its path and parsed value."""
+    root = Path(project_root).resolve()
+    private_root = root / "private"
+    layout_file = _private_input_path(root, layout_path, "cv-layout.yaml")
+    _validate_private_file(layout_file, private_root, ".yaml", MAX_LAYOUT_BYTES)
     layout_values = _read_yaml_mapping(layout_file, MAX_LAYOUT_BYTES)
     _reject_secret_keys(layout_values, "layout")
     try:
         parsed_layout = CvLayoutSettings.model_validate(layout_values)
     except ValidationError as error:
         raise SettingsError(f"CV layout is invalid: {error}") from error
+    return layout_file, parsed_layout
+
+
+def validate_private_inputs(
+    project_root: str | Path = ROOT,
+    *,
+    profile_path: str | Path | None = None,
+    template_path: str | Path | None = None,
+    layout_path: str | Path | None = None,
+) -> PrivateInputs:
+    """Validate the active profile, DOCX template, and layout configuration."""
+    profile = validate_profile_input(project_root, profile_path=profile_path)
+    template = validate_template_input(
+        project_root, template_path=template_path
+    )
+    layout_file, parsed_layout = validate_layout_input(
+        project_root, layout_path=layout_path
+    )
 
     return PrivateInputs(
         profile_path=profile,

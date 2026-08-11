@@ -21,6 +21,14 @@ from starlette.types import Scope
 
 from app.database import STAGES, initialize_database
 from app.repository import ApplicationNotFoundError, Repository
+from app.routes.setup import (
+    SetupIncompleteError,
+    inspect_setup,
+    normalize_configured_origin,
+    normalize_http_origin,
+    require_setup_ready,
+    router,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(ROOT / "app" / "templates"))
@@ -59,6 +67,7 @@ def now_value() -> str:
 
 def run_server(
     database_path: str | Path,
+    project_root: str | Path = ROOT,
     host: str = "127.0.0.1",
     port: int = 8000,
 ) -> None:
@@ -66,7 +75,11 @@ def run_server(
     import uvicorn
 
     uvicorn.run(
-        create_app(database_path),
+        create_app(
+            database_path,
+            project_root=project_root,
+            trusted_origin=normalize_http_origin(host, port),
+        ),
         host=host,
         port=port,
         log_level="info",
@@ -96,20 +109,31 @@ def form_values(
     }
 
 
-def create_app(database_path: str | Path | None = None) -> FastAPI:
+def create_app(
+    database_path: str | Path | None = None,
+    project_root: str | Path | None = None,
+    trusted_origin: str = "http://testserver",
+) -> FastAPI:
     """Build an application instance, optionally using a supplied database."""
     configured_path = os.getenv("JOBHUNTER_DATABASE")
     path = Path(
         database_path or configured_path or ROOT / "private" / "jobhunter.db"
     )
+    root = Path(project_root or ROOT).resolve()
+    normalized_origin = normalize_configured_origin(trusted_origin)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         initialize_database(path)
         app.state.repository = Repository(path)
+        app.state.database_path = path
+        app.state.project_root = root
+        app.state.now_value = now_value
+        app.state.trusted_origin = normalized_origin
         yield
 
     app = FastAPI(title="JobHunter", lifespan=lifespan)
+    app.include_router(router)
     static_directory = ROOT / "app" / "static"
     app.mount(
         "/static",
@@ -133,11 +157,16 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
 
     @app.get("/applications/new", response_class=HTMLResponse)
     def new_application(request: Request) -> HTMLResponse:
+        setup_error = inspect_setup(
+            request.app.state.project_root,
+            request.app.state.database_path,
+        ).blocking_message
         context = {
             "application": {},
             "action": "/applications",
             "submit_label": "Create application",
             "is_dialog": bool(request.headers.get("HX-Request")),
+            "setup_error": setup_error,
         }
         if request.headers.get("HX-Request"):
             return templates.TemplateResponse(
@@ -172,15 +201,23 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
             full_jd,
         )
         try:
+            require_setup_ready(request)
             application_id = request.app.state.repository.create_application(
                 values, now_value()
             )
-        except ValueError as error:
+        except (SetupIncompleteError, ValueError) as error:
             context = {
                 "application": values,
                 "action": "/applications",
                 "submit_label": "Create application",
-                "error": str(error),
+                "error": ""
+                if isinstance(error, SetupIncompleteError)
+                else str(error),
+                "setup_error": (
+                    str(error)
+                    if isinstance(error, SetupIncompleteError)
+                    else ""
+                ),
                 "is_dialog": bool(request.headers.get("HX-Request")),
             }
             if request.headers.get("HX-Request"):
@@ -440,4 +477,6 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     return app
 
 
-app = create_app()
+app = create_app(
+    trusted_origin=normalize_http_origin("127.0.0.1", 8000),
+)

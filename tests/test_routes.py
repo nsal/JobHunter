@@ -76,6 +76,8 @@ async def test_create_requires_role_company_and_jd(
 
     assert response.status_code == 422
     assert message in response.text
+    assert response.text.count('role="alert"') == 1
+    assert "Open setup" not in response.text
 
 
 async def test_create_form_requires_jd_and_has_no_cv_controls(

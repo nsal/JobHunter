@@ -9,7 +9,11 @@
   <script src="{{ url_for('static', path='app.js') }}" defer></script>
 </head>
 <body>
-  <header><a href="/">JobHunter</a><span>Local application register</span></header>
+  <header>
+    <a href="/">JobHunter</a>
+    <span>Local application register</span>
+    <nav><a href="/setup">Setup</a></nav>
+  </header>
   <main class="{% block main_class %}{% endblock %}">
     {% block content %}{% endblock %}
   </main>
