@@ -9,7 +9,7 @@ provider support, profile indexing, document fitting, and operational
 hardening as one implementation unit.
 
 The first stage is specified separately in
-`docs/plans/2026-08-06-deliver-ai-assessment-and-one-page-cv-v1.md`.
+`docs/plans/completed/2026-08-06-deliver-ai-assessment-and-one-page-cv-v1.md`.
 
 ## Guiding decisions
 

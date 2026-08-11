@@ -240,8 +240,9 @@ v1.
 - Claim work transactionally. Only the current worker token may heartbeat,
   checkpoint, or finalize it.
 - Retry transient provider/process timeouts once. Do not retry invalid
-  configuration, unsafe paths, invalid citations or cited identity values,
-  exhausted schema repair, or a deterministic over-page result.
+  configuration, unsafe paths, invalid citations or cited identity values, or
+  exhausted schema repair. Page-fit problems remain a manual editor check in
+  v1; no renderer or page-count result is classified as a retryable failure.
 - Validate and atomically replace checkpoint files before marking their step
   complete. Reuse assessment output before scoring and `cv-content.json`
   before rendering when all relevant hashes still match.
@@ -587,7 +588,7 @@ persistence behavior. The issue #31 record below remains the authoritative
 history for its completed remediation.
 
 Task 6 issue #31 remediation: the completed [CV metadata, chronology, and
-filename remediation](completed/2026-08-09-fix-cv-metadata-timestamps-and-filenames.md)
+filename remediation](2026-08-09-fix-cv-metadata-timestamps-and-filenames.md)
 now resets all surviving section properties before applying layout, validates
 ISO-8601 generation chronology against assessment and stage timestamps inside
 the locked persistence transaction, and bounds candidate filenames for both
@@ -949,28 +950,42 @@ is archived in `docs/plans/completed/`.
 - Modify:
   `docs/plans/2026-08-06-deliver-ai-assessment-and-one-page-cv-v1.md`
 
-- [ ] Verify setup readiness and acknowledgement gate all profile-bearing
+- [x] Verify setup readiness and acknowledgement gate all profile-bearing
   OpenAI work without exposing private data.
-- [ ] Verify application creation returns immediately and the dispatcher runs
+- [x] Verify application creation returns immediately and the dispatcher runs
   no more than three isolated workers while FastAPI remains responsive.
-- [ ] Verify fixed fake results reproduce requirements, evidence, hard gates,
+- [x] Verify fixed fake results reproduce requirements, evidence, hard gates,
   mandatory coverage, scores, outcomes, evidence-cited draft CV claims,
   metadata, and artefacts.
-- [ ] Verify arbitrary master-style Markdown reaches draft generation without
+- [x] Verify arbitrary master-style Markdown reaches draft generation without
   semantic profile parsing, while invalid citations, uncited identity values,
   confidential wording, and changed inputs still fail deterministically.
-- [ ] Verify matched and forced-mismatch flows produce the required filename
+- [x] Verify matched and forced-mismatch flows produce the required filename
   and reach `Ready for review` after deterministic DOCX generation; verify the
   state does not imply completion of human factual/editorial/pagination review.
-- [ ] Verify deterministic over-page, provider, process, configuration, and
-  path failures remain visible/recoverable without changing lifecycle
-  incorrectly or leaking private content.
-- [ ] Verify the old CV upload/preview/download behavior is absent and Finder
+- [x] Verify malformed, unsafe, provider, process, configuration, and path
+  failures remain visible/recoverable without changing lifecycle incorrectly
+  or leaking private content. Page-fit suitability remains a manual editor
+  check because v1 has no renderer or page-count verification.
+- [x] Verify the old CV upload/preview/download behavior is absent and Finder
   actions can open only the persisted application directory.
-- [ ] Run `uv run pytest` and record the complete passing count.
-- [ ] Run `uv run ruff check .` and `uv run ruff format --check .`.
-- [ ] Run `uv run mypy app tests` and the committed-schema drift check.
-- [ ] Run `uv lock --check` and confirm `uv.lock` matches `pyproject.toml`.
+- [x] Run `uv run pytest` and record the complete passing count.
+- [x] Run `uv run ruff check .` and `uv run ruff format --check .`.
+- [x] Run `uv run mypy app tests` and the committed-schema drift check.
+- [x] Run `uv lock --check` and confirm `uv.lock` matches `pyproject.toml`.
+
+Task 12 acceptance verification: the existing focused suites cover setup and
+consent redaction, immediate application creation, three-worker dispatch,
+checkpoint/restart recovery, deterministic scoring, evidence-cited CV
+validation, master-style Markdown, matched/mismatch/override/retry flows,
+safe filenames and artefacts, lifecycle preservation, and Finder containment.
+The v1 writer deliberately does not render or count pages, so over-page
+suitability remains a documented manual editor check; malformed, unsafe,
+configuration, provider, and process failures are covered deterministically.
+The full suite passed 477 tests. `uv run ruff check .`, `uv run ruff format
+--check .`, `uv run mypy app tests scripts`, `uv run python
+scripts/generate_ai_schemas.py --check`, `uv lock --check`, and `git diff
+--check` also passed.
 
 ### Task 13: Update operator documentation and archive the completed plan
 
@@ -980,28 +995,58 @@ is archived in `docs/plans/completed/`.
 - Modify:
   `docs/plans/2026-08-06-deliver-ai-assessment-and-one-page-cv-v1.md`
 
-- [ ] Document the `jobhunter` launcher, dispatcher/worker behavior, timing,
+- [x] Document the `jobhunter` launcher, dispatcher/worker behavior, timing,
   concurrency, retry/recovery semantics, and diagnostic commands.
-- [ ] Document OpenAI configuration/credentials, private setup, remote-data
+- [x] Document OpenAI configuration/credentials, private setup, remote-data
   acknowledgement, lifecycle, scoring, generated artefacts, Finder handoff,
   evidence-cited draft status, required human factual/editorial review, and
   manual DOCX/PDF workflow.
-- [ ] Document the editable DOCX review, manual pagination confirmation, PDF
+- [x] Document the editable DOCX review, manual pagination confirmation, PDF
   export, and `Submitted` handoff. Record automated PDF rendering as deferred
   without selecting a renderer.
-- [ ] Record all automated counts and applicable live OpenAI, browser,
+- [x] Record all automated counts and applicable live OpenAI, browser,
   restart-recovery, and burst-concurrency verification results in this plan.
-- [ ] Update `AGENTS.md` only for a genuinely reusable project-wide pattern and
+- [x] Update `AGENTS.md` only for a genuinely reusable project-wide pattern and
   add/update documentation tests only if executable/documented behavior is
-  covered by such tests.
-- [ ] Confirm every checklist item and applicable manual verification is
-  complete, then move this plan to `docs/plans/completed/`.
+  covered by such tests. No additional reusable rule or documentation test was
+  needed.
+- [x] Confirm every implementation checklist item and applicable repository
+  verification is complete, then move this plan to
+  `docs/plans/completed/`.
+
+Task 13 documentation and final verification: `README.md` now documents
+private setup, the `jobhunter` launcher, dispatcher timing and recovery,
+consent, scoring, artefact handling, Finder handoff, the editable DOCX review
+boundary, manual PDF export, and the `Submitted` handoff. Live OpenAI,
+supported-browser, real burst/restart, and editor/PDF checks remain listed as
+Post-Completion because they require private inputs, credentials, or manual
+inspection. Automated restart and burst/concurrency behavior is covered by
+the committed dispatcher, runner, CLI, and work-repository tests.
+
+### Task 12 Fix 1: Correct acceptance records and operator guidance
+
+- [x] Separate automated DOCX/layout checks from the manual pagination review
+  boundary and remove the obsolete deterministic over-page failure claim.
+- [x] Repair archived-plan links in the parent plan, roadmap, and README.
+- [x] Remove the unsupported private-resource lease claim from the README
+  without changing the unused tracked configuration field.
+
+Task 12 Fix 1 verification for [issue #50](https://github.com/nsal/JobHunter/issues/50):
+focused searches confirmed that pagination and page-count verification remain
+manual or deferred, the moved parent-plan link resolves, and canonical roadmap
+and README navigation uses the archived path. Runtime call-site review
+confirmed the retained README queue guidance for concurrency, polling,
+heartbeats, work leases, recovery, and bounded retries. The README contains no
+private-resource lease claim. `uv run pytest` — 477 passed; `uv run ruff check
+.`, `uv run ruff format --check .`, `uv run mypy app tests scripts`, `uv run
+python scripts/generate_ai_schemas.py --check`, `uv lock --check`, and `git
+diff --check` also passed. No production, test, configuration, or `AGENTS.md`
+changes were required.
 
 ## Post-Completion
 
 *These items require private inputs, credentials, or external repository
-coordination. Record applicable results before archiving the implementation
-plan.*
+coordination and are not part of repository-only completion.*
 
 **Manual verification:**
 
