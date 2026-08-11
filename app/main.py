@@ -57,6 +57,22 @@ def now_value() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
 
 
+def run_server(
+    database_path: str | Path,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+) -> None:
+    """Run one FastAPI/Uvicorn process for the launcher."""
+    import uvicorn
+
+    uvicorn.run(
+        create_app(database_path),
+        host=host,
+        port=port,
+        log_level="info",
+    )
+
+
 def form_values(
     role: str,
     company: str,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -27,9 +28,14 @@ from app.assessments import (
     CompletedAssessment,
 )
 from app.settings import AiSettings
+from app.work.models import WorkCheckpoint, WorkCheckpointProvenance
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_INSTRUCTIONS_PATH = ROOT / "ai" / "instructions" / "assessment.md"
+Checkpoint = Callable[
+    [str, str, str, dict[str, str | None], WorkCheckpointProvenance],
+    None,
+]
 
 
 class AssessmentInputChangedError(RuntimeError):
@@ -139,6 +145,9 @@ class AssessmentService:
         expected_jd_sha256: str | None = None,
         work_id: str,
         worker_token: str,
+        checkpoint: Checkpoint | None = None,
+        completion_clock: Callable[[], str] | None = None,
+        resume_checkpoint: WorkCheckpoint | None = None,
     ) -> AssessmentExecution:
         """Generate, validate, score, atomically write, and persist a result."""
         if not completed_at or completed_at != completed_at.strip():
@@ -180,33 +189,115 @@ class AssessmentService:
             timeout_seconds=self._settings.provider.request_timeout_seconds,
             contains_profile=True,
         )
-        generated = self._generator.generate(request)
-        validate_assessment_references(
-            generated.value, jd_blocks, profile_blocks
-        )
+        checkpoint_hashes: dict[str, str | None] = {
+            "profile_sha256": profile_sha256,
+            "jd_sha256": jd_sha256,
+            "prompt_sha256": _hash_text(instructions),
+            "schema_sha256": _schema_hash(),
+        }
+        result_path: str
+        generated_model: str
+        generated_provider: str
+        generated_response_ids: tuple[str, ...]
+        generated_input_tokens = 0
+        generated_output_tokens = 0
+        generated_total_tokens = 0
+        generated_repair_attempted = False
+        result: AssessmentResult | None = None
+        provenance: WorkCheckpointProvenance | None = None
+        if resume_checkpoint is not None:
+            loaded = self._load_checkpoint(
+                resume_checkpoint,
+                application.artefact_directory,
+                checkpoint_hashes,
+                jd_blocks,
+                profile_blocks,
+            )
+            if loaded is not None:
+                result, provenance = loaded
+                generated_model = provenance.model
+                generated_provider = provenance.provider
+                generated_response_ids = provenance.response_ids
+                generated_input_tokens = provenance.input_tokens
+                generated_output_tokens = provenance.output_tokens
+                generated_total_tokens = provenance.total_tokens
+                generated_repair_attempted = provenance.repair_attempted
+        if result is None:
+            generated = self._generator.generate(request)
+            result = generated.value
+            validate_assessment_references(result, jd_blocks, profile_blocks)
+            generated_model = generated.model
+            generated_provider = generated.metadata.provider
+            generated_response_ids = generated.response_ids
+            generated_input_tokens = generated.usage.input_tokens
+            generated_output_tokens = generated.usage.output_tokens
+            generated_total_tokens = generated.usage.total_tokens
+            generated_repair_attempted = generated.metadata.repair_attempted
+            provenance = WorkCheckpointProvenance(
+                model=generated.model,
+                provider=generated.metadata.provider,
+                response_ids=generated.response_ids,
+                input_tokens=generated.usage.input_tokens,
+                output_tokens=generated.usage.output_tokens,
+                total_tokens=generated.usage.total_tokens,
+                repair_attempted=generated.metadata.repair_attempted,
+            )
+            assessment_id = uuid4().hex
+            base = (
+                Path(application.artefact_directory)
+                / "assessments"
+                / assessment_id
+            )
+            result_path = (base / "assessment-result.json").as_posix()
+        else:
+            assert resume_checkpoint is not None
+            assessment_id = uuid4().hex
+            result_path = resume_checkpoint.path
+            base = Path(result_path).parent
 
+        assert result is not None
+        assert provenance is not None
         score = score_assessment(
-            generated.value,
+            result,
             self._settings.scoring.threshold,
             taxonomy,
         )
-        assessment_id = uuid4().hex
-        base = (
-            Path(application.artefact_directory) / "assessments" / assessment_id
-        )
-        result_path = (base / "assessment-result.json").as_posix()
+        if resume_checkpoint is None or result_path != resume_checkpoint.path:
+            base = (
+                Path(application.artefact_directory)
+                / "assessments"
+                / assessment_id
+            )
+            result_path = (base / "assessment-result.json").as_posix()
         analysis_path = (base / "match-analysis.json").as_posix()
-        result_document = generated.value.model_dump(mode="json")
+        result_document = result.model_dump(mode="json")
         analysis_document = {
             **score.as_document(taxonomy.version),
-            "analysis": generated.value.analysis,
-            "gaps": _gap_document(generated.value),
+            "analysis": result.analysis,
+            "gaps": _gap_document(result),
         }
 
         written: list[str] = []
+        checkpointed: set[str] = set()
         try:
-            self._artefacts.write_json(result_path, result_document)
-            written.append(result_path)
+            if (
+                resume_checkpoint is None
+                or result_path != resume_checkpoint.path
+            ):
+                self._artefacts.write_json(result_path, result_document)
+                written.append(result_path)
+                result_sha256 = self._artefacts.sha256(result_path)
+                if checkpoint is not None:
+                    checkpoint(
+                        "assessment_result",
+                        result_path,
+                        result_sha256,
+                        checkpoint_hashes,
+                        provenance,
+                    )
+                    checkpointed.add(result_path)
+            else:
+                result_sha256 = resume_checkpoint.sha256
             self._artefacts.write_json(analysis_path, analysis_document)
             written.append(analysis_path)
             current_application = self._repository.get_application(
@@ -223,42 +314,64 @@ class AssessmentService:
                 or current_application.current_stage != "Assessing"
             ):
                 raise AssessmentInputChangedError
+            if checkpoint is not None and result_path not in checkpointed:
+                checkpoint(
+                    "assessment_result",
+                    result_path,
+                    result_sha256,
+                    checkpoint_hashes,
+                    provenance,
+                )
+                checkpointed.add(result_path)
+            completion_time = (
+                completion_clock()
+                if completion_clock is not None
+                else completed_at
+            )
+            if (
+                not completion_time
+                or completion_time != completion_time.strip()
+            ):
+                raise ValueError(
+                    "assessment completion time must be non-empty trimmed text"
+                )
             completed = CompletedAssessment(
                 assessment_id=assessment_id,
                 application_id=application_id,
                 score=score,
-                model=generated.model,
-                model_sha256=_hash_text(generated.model),
-                schema_version=generated.value.schema_version.value,
+                model=generated_model,
+                model_sha256=_hash_text(generated_model),
+                schema_version=result.schema_version.value,
                 schema_sha256=_schema_hash(),
                 instruction_sha256=_hash_text(instructions),
                 taxonomy_version=taxonomy.version,
                 taxonomy_sha256=taxonomy.sha256,
                 profile_sha256=profile_sha256,
                 jd_sha256=jd_sha256,
-                provider=generated.metadata.provider,
-                response_ids=generated.response_ids,
-                input_tokens=generated.usage.input_tokens,
-                output_tokens=generated.usage.output_tokens,
-                total_tokens=generated.usage.total_tokens,
-                repair_attempted=generated.metadata.repair_attempted,
+                provider=generated_provider,
+                response_ids=generated_response_ids,
+                input_tokens=generated_input_tokens,
+                output_tokens=generated_output_tokens,
+                total_tokens=generated_total_tokens,
+                repair_attempted=generated_repair_attempted,
                 result_path=result_path,
-                result_sha256=self._artefacts.sha256(result_path),
+                result_sha256=result_sha256,
                 analysis_path=analysis_path,
                 analysis_sha256=self._artefacts.sha256(analysis_path),
-                completed_at=completed_at,
+                completed_at=completion_time,
                 work_id=work_id,
                 worker_token=worker_token,
             )
             self._repository.add_completed(completed)
         except BaseException:
             for path in reversed(written):
-                self._artefacts.resolve(path).unlink(missing_ok=True)
+                if path not in checkpointed:
+                    self._artefacts.resolve(path).unlink(missing_ok=True)
             raise
 
         return AssessmentExecution(
             assessment_id=assessment_id,
-            result=generated.value,
+            result=result,
             score=score,
             result_path=result_path,
             analysis_path=analysis_path,
@@ -273,6 +386,9 @@ class AssessmentService:
         expected_jd_sha256: str | None = None,
         work_id: str,
         worker_token: str,
+        checkpoint: Checkpoint | None = None,
+        completion_clock: Callable[[], str] | None = None,
+        resume_checkpoint: WorkCheckpoint | None = None,
     ) -> AssessmentExecution:
         """Compatibility alias expressing the domain action directly."""
         return self.execute(
@@ -282,4 +398,38 @@ class AssessmentService:
             expected_jd_sha256=expected_jd_sha256,
             work_id=work_id,
             worker_token=worker_token,
+            checkpoint=checkpoint,
+            completion_clock=completion_clock,
+            resume_checkpoint=resume_checkpoint,
         )
+
+    def _load_checkpoint(
+        self,
+        checkpoint: WorkCheckpoint,
+        application_directory: str,
+        expected_hashes: dict[str, str | None],
+        jd_blocks: tuple[SourceBlock, ...],
+        profile_blocks: tuple[SourceBlock, ...],
+    ) -> tuple[AssessmentResult, WorkCheckpointProvenance] | None:
+        """Return a checkpoint only when its path, digest, and content agree."""
+        if checkpoint.step != "assessment_result":
+            return None
+        if checkpoint.provenance is None:
+            return None
+        if any(
+            checkpoint.hashes.get(key) != value
+            for key, value in expected_hashes.items()
+        ):
+            return None
+        try:
+            path = Path(checkpoint.path)
+            if not path.is_relative_to(Path(application_directory)):
+                return None
+            payload = self._artefacts.read_bytes(checkpoint.path)
+            if sha256_bytes(payload) != checkpoint.sha256:
+                return None
+            result = AssessmentResult.model_validate_json(payload)
+            validate_assessment_references(result, jd_blocks, profile_blocks)
+            return result, checkpoint.provenance
+        except OSError, TypeError, ValueError, KeyError:
+            return None

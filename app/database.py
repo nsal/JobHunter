@@ -221,18 +221,29 @@ def initialize_database(database_path: str | Path) -> None:
                 assessment_id TEXT REFERENCES assessments(id),
                 profile_sha256 TEXT,
                 jd_sha256 TEXT,
+                assessment_result_sha256 TEXT,
+                role_sha256 TEXT,
                 prompt_sha256 TEXT,
                 schema_sha256 TEXT,
                 template_sha256 TEXT,
                 layout_sha256 TEXT,
                 checkpoint_path TEXT,
                 checkpoint_sha256 TEXT,
+                checkpoint_provenance TEXT CHECK (
+                    checkpoint_provenance IS NULL
+                    OR json_valid(checkpoint_provenance)
+                ),
                 error_code TEXT,
                 error_message TEXT,
                 finalizer_token TEXT,
                 failure_token TEXT,
                 CHECK (profile_sha256 IS NULL OR LENGTH(profile_sha256) = 64),
                 CHECK (jd_sha256 IS NULL OR LENGTH(jd_sha256) = 64),
+                CHECK (
+                    assessment_result_sha256 IS NULL
+                    OR LENGTH(assessment_result_sha256) = 64
+                ),
+                CHECK (role_sha256 IS NULL OR LENGTH(role_sha256) = 64),
                 CHECK (prompt_sha256 IS NULL OR LENGTH(prompt_sha256) = 64),
                 CHECK (schema_sha256 IS NULL OR LENGTH(schema_sha256) = 64),
                 CHECK (template_sha256 IS NULL OR LENGTH(template_sha256) = 64),
@@ -349,3 +360,25 @@ def initialize_database(database_path: str | Path) -> None:
             END;
             """
         )
+        columns = {
+            str(row["name"])
+            for row in connection.execute(
+                "PRAGMA table_info(work_items)"
+            ).fetchall()
+        }
+        migrations = {
+            "assessment_result_sha256": (
+                "ALTER TABLE work_items ADD COLUMN "
+                "assessment_result_sha256 TEXT"
+            ),
+            "checkpoint_provenance": (
+                "ALTER TABLE work_items ADD COLUMN checkpoint_provenance TEXT"
+            ),
+            "role_sha256": (
+                "ALTER TABLE work_items ADD COLUMN role_sha256 TEXT CHECK ("
+                "role_sha256 IS NULL OR LENGTH(role_sha256) = 64)"
+            ),
+        }
+        for column, statement in migrations.items():
+            if column not in columns:
+                connection.execute(statement)

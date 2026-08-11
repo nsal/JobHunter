@@ -323,8 +323,8 @@ class AssessmentRepository:
                         """INSERT INTO work_items (
                             id, application_id, work_type, state,
                             available_at, current_step, queued_at, assessment_id,
-                            profile_sha256, jd_sha256
-                        ) VALUES (?, ?, ?, 'queued', ?, 'generation', ?, ?, ?, ?)""",
+                            profile_sha256, jd_sha256, assessment_result_sha256
+                        ) VALUES (?, ?, ?, 'queued', ?, 'generation', ?, ?, ?, ?, ?)""",
                         (
                             uuid4().hex,
                             assessment.application_id,
@@ -334,6 +334,7 @@ class AssessmentRepository:
                             assessment.assessment_id,
                             assessment.profile_sha256,
                             assessment.jd_sha256,
+                            assessment.result_sha256,
                         ),
                     )
                 except sqlite3.IntegrityError as error:

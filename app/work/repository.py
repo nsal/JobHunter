@@ -10,6 +10,7 @@ from uuid import uuid4
 from app.ai.providers.base import StructuredGenerationError
 from app.database import connect
 from app.work.models import (
+    WorkCheckpointProvenance,
     WorkItem,
     WorkState,
     WorkType,
@@ -76,6 +77,9 @@ def _row_to_item(row: sqlite3.Row) -> WorkItem:
     values = dict(row)
     values["work_type"] = WorkType(str(values["work_type"]))
     values["state"] = WorkState(str(values["state"]))
+    values["checkpoint_provenance"] = WorkCheckpointProvenance.from_json(
+        values.get("checkpoint_provenance")
+    )
     return WorkItem(**values)
 
 
@@ -94,6 +98,7 @@ class WorkRepository:
         assessment_id: str | None = None,
         profile_sha256: str | None = None,
         jd_sha256: str | None = None,
+        assessment_result_sha256: str | None = None,
         prompt_sha256: str | None = None,
         schema_sha256: str | None = None,
         template_sha256: str | None = None,
@@ -144,9 +149,10 @@ class WorkRepository:
                     """INSERT INTO work_items (
                         id, application_id, work_type, state, available_at,
                         current_step, queued_at, assessment_id,
-                        profile_sha256, jd_sha256, prompt_sha256, schema_sha256,
+                        profile_sha256, jd_sha256, assessment_result_sha256,
+                        prompt_sha256, schema_sha256,
                         template_sha256, layout_sha256
-                    ) VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    ) VALUES (?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         work_id,
                         application_id,
@@ -159,6 +165,7 @@ class WorkRepository:
                         assessment_id,
                         profile_sha256,
                         jd_sha256,
+                        assessment_result_sha256,
                         prompt_sha256,
                         schema_sha256,
                         template_sha256,
@@ -182,8 +189,32 @@ class WorkRepository:
             raise WorkNotFoundError("Work item not found.")
         return _row_to_item(row)
 
+    def list_available(self, now: str, limit: int) -> list[WorkItem]:
+        """Return queued work that can be claimed now.
+
+        The dispatcher uses this read only to decide how many claim attempts
+        to make.  Claiming remains transactional in :meth:`claim`, so a
+        stale view cannot grant ownership to two workers.
+        """
+        if limit <= 0:
+            raise ValueError("Available work limit must be positive.")
+        now = canonical_timestamp(now, "availability time")
+        with connect(self.database_path) as connection:
+            rows = connection.execute(
+                """SELECT * FROM work_items
+                WHERE state = 'queued' AND available_at <= ?
+                ORDER BY available_at, queued_at, id
+                LIMIT ?""",
+                (now, limit),
+            ).fetchall()
+        return [_row_to_item(row) for row in rows]
+
     def claim(
-        self, work_id: str, worker_token: str, now: str, lease_seconds: int = 60
+        self,
+        work_id: str,
+        worker_token: str,
+        now: str,
+        lease_seconds: float = 60,
     ) -> WorkItem:
         """Claim queued work using an immediate transaction."""
         if not worker_token.strip():
@@ -223,7 +254,11 @@ class WorkRepository:
         return row
 
     def heartbeat(
-        self, work_id: str, worker_token: str, now: str, lease_seconds: int = 60
+        self,
+        work_id: str,
+        worker_token: str,
+        now: str,
+        lease_seconds: float = 60,
     ) -> None:
         """Extend a running worker lease."""
         if lease_seconds <= 0:
@@ -264,6 +299,7 @@ class WorkRepository:
         sha256: str,
         *,
         hashes: dict[str, str | None] | None = None,
+        provenance: WorkCheckpointProvenance | None = None,
     ) -> None:
         """Record an already atomically-written and validated checkpoint."""
         if len(sha256) != 64 or not step.strip() or not path.strip():
@@ -274,6 +310,8 @@ class WorkRepository:
             for key in (
                 "profile_sha256",
                 "jd_sha256",
+                "assessment_result_sha256",
+                "role_sha256",
                 "prompt_sha256",
                 "schema_sha256",
                 "template_sha256",
@@ -287,12 +325,24 @@ class WorkRepository:
                 raise WorkStateError("Only running work can checkpoint.")
             cursor = connection.execute(
                 """UPDATE work_items SET current_step = ?, checkpoint_path = ?,
-                checkpoint_sha256 = ?, profile_sha256 = COALESCE(?, profile_sha256),
-                jd_sha256 = COALESCE(?, jd_sha256), prompt_sha256 = COALESCE(?, prompt_sha256),
+                checkpoint_sha256 = ?, checkpoint_provenance = ?,
+                profile_sha256 = COALESCE(?, profile_sha256),
+                jd_sha256 = COALESCE(?, jd_sha256),
+                assessment_result_sha256 = COALESCE(?, assessment_result_sha256),
+                role_sha256 = COALESCE(?, role_sha256),
+                prompt_sha256 = COALESCE(?, prompt_sha256),
                 schema_sha256 = COALESCE(?, schema_sha256), template_sha256 = COALESCE(?, template_sha256),
                 layout_sha256 = COALESCE(?, layout_sha256)
                 WHERE id = ? AND state = 'running' AND worker_token = ?""",
-                (step, path, sha256, *allowed.values(), work_id, worker_token),
+                (
+                    step,
+                    path,
+                    sha256,
+                    provenance.to_json() if provenance is not None else None,
+                    *allowed.values(),
+                    work_id,
+                    worker_token,
+                ),
             )
             if cursor.rowcount != 1:
                 raise StaleWorkerError("Worker token is no longer current.")

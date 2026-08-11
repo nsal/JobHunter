@@ -7,9 +7,10 @@ import pytest
 from app.ai.providers.base import (
     ProviderErrorCode,
     StructuredGenerationError,
+    TokenUsage,
 )
 from app.database import connect, initialize_database
-from app.work.models import WorkState, WorkType
+from app.work.models import WorkCheckpointProvenance, WorkState, WorkType
 from app.work.repository import (
     StaleWorkerError,
     WorkRepository,
@@ -110,7 +111,20 @@ def test_work_claim_heartbeat_and_checkpoint_without_generic_completion(
         "validated",
         "assessments/result.json",
         "a" * 64,
-        hashes={"profile_sha256": "b" * 64, "jd_sha256": "c" * 64},
+        hashes={
+            "profile_sha256": "b" * 64,
+            "jd_sha256": "c" * 64,
+            "role_sha256": "d" * 64,
+        },
+        provenance=WorkCheckpointProvenance(
+            model="gpt-test",
+            provider="openai",
+            response_ids=("response-1",),
+            input_tokens=10,
+            output_tokens=20,
+            total_tokens=30,
+            repair_attempted=True,
+        ),
     )
     assert repository.checkpoint_matches(
         work_id,
@@ -121,6 +135,77 @@ def test_work_claim_heartbeat_and_checkpoint_without_generic_completion(
     )
     assert not hasattr(repository, "complete")
     assert repository.get(work_id).state is WorkState.RUNNING
+    checkpoint_provenance = repository.get(work_id).checkpoint_provenance
+    assert checkpoint_provenance is not None
+    assert checkpoint_provenance.model == "gpt-test"
+    assert repository.get(work_id).role_sha256 == "d" * 64
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("model", ""),
+        ("provider", " "),
+        ("response_ids", (" ",)),
+        ("input_tokens", -1),
+    ],
+)
+def test_checkpoint_provenance_rejects_invalid_values(
+    field: str, value: object
+) -> None:
+    values: dict[str, object] = {
+        "model": "gpt-test",
+        "provider": "openai",
+        "response_ids": ("response-1",),
+        "input_tokens": 10,
+        "output_tokens": 20,
+        "total_tokens": 30,
+        "repair_attempted": False,
+    }
+    values[field] = value
+    with pytest.raises((TypeError, ValueError)):
+        WorkCheckpointProvenance(**values)  # type: ignore[arg-type]
+
+
+def test_checkpoint_provenance_preserves_valid_provider_token_usage() -> None:
+    """Keep the exact usage values accepted by the provider contract."""
+    usage = TokenUsage(input_tokens=10, output_tokens=20, total_tokens=0)
+
+    provenance = WorkCheckpointProvenance(
+        model="gpt-test",
+        provider="openai",
+        response_ids=("response-1",),
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        total_tokens=usage.total_tokens,
+        repair_attempted=False,
+    )
+
+    assert provenance.total_tokens == 0
+
+
+def test_fractional_claim_lease_preserves_microseconds(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+    application_id = create_application(database_path)
+    repository = WorkRepository(database_path)
+    work_id = repository.enqueue(
+        application_id,
+        WorkType.ASSESSMENT,
+        "2026-01-01T00:00:00Z",
+    )
+
+    repository.claim(
+        work_id,
+        "worker-a",
+        "2026-01-01T00:00:01.125000Z",
+        lease_seconds=1.375,
+    )
+
+    assert repository.get(work_id).lease_expires_at == (
+        "2026-01-01T00:00:02.500000+00:00"
+    )
 
 
 def test_active_work_is_unique_and_stale_tokens_are_rejected(

@@ -737,32 +737,77 @@ change is required, and Task 9 and later tasks remain incomplete.
 - Create: `app/work/runner.py`
 - Create: `app/cli.py`
 - Modify: `app/main.py`
+- Modify: `app/work/repository.py`
+- Modify: `app/assessment/service.py`
+- Modify: `app/cv/generator.py`
 - Modify: `pyproject.toml`
 - Create: `tests/test_dispatcher.py`
 - Create: `tests/test_runner.py`
 - Create: `tests/test_cli.py`
 
-- [ ] Add a `jobhunter` CLI that supervises FastAPI/Uvicorn and one dispatcher
+- [x] Add a `jobhunter` CLI that supervises FastAPI/Uvicorn and one dispatcher
   as separate long-lived processes and propagates startup/shutdown failures.
-- [ ] Let the dispatcher claim eligible work, spawn up to three children using
+- [x] Let the dispatcher claim eligible work, spawn up to three children using
   `spawn` semantics, refill slots immediately after exits, and use the
   configured idle poll interval only when no slot/work event occurs.
-- [ ] Pass work IDs/tokens only; create SQLite, settings, provider, artefact,
+- [x] Pass work IDs/tokens only; create SQLite, settings, provider, artefact,
   assessment, and CV resources inside each worker.
-- [ ] Dispatch assessment and CV-generation step pipelines with heartbeat,
+- [x] Dispatch assessment and CV-generation step pipelines with heartbeat,
   checkpoint, retry, and lifecycle integration.
-- [ ] Recover abandoned running work after bounded expiry and persist safe
+- [x] Recover abandoned running work after bounded expiry and persist safe
   spawn/crash/exit diagnostics.
-- [ ] Support graceful termination without accepting new work, orphaning
+- [x] Support graceful termination without accepting new work, orphaning
   children, or sharing inherited SQLite connections.
-- [ ] Write fake-clock/launcher tests for idle polling, burst work, concurrency
+- [x] Write fake-clock/launcher tests for idle polling, burst work, concurrency
   three, immediate reuse, mixed work types, crash/retry, restart recovery, and
   graceful shutdown without desktop automation.
-- [ ] Write runner tests for independent resource construction, step resume,
+- [x] Write runner tests for independent resource construction, step resume,
   matched/mismatch/override lifecycle, deterministic failure, and redaction.
-- [ ] Add a bounded real-spawn smoke test proving child SQLite isolation and
+- [x] Add a bounded real-spawn smoke test proving child SQLite isolation and
   completion; keep it deterministic and free of OpenAI/desktop calls.
-- [ ] Run `uv run pytest`; record the passing count before task 10.
+- [x] Run `uv run pytest`; record the passing count before task 10.
+
+Task 9 verification: focused dispatcher, runner, and CLI tests — 8 passed;
+`uv run pytest` — 369 passed; `uv run ruff check .`, `uv run ruff format
+--check .`, `uv run mypy app tests scripts`, the generated-schema drift check,
+`uv lock --check`, and `git diff --check` also passed.
+
+Task 9 Fix 1 verification for issue #9: the packaged `jobhunter` entry point,
+synchronous fresh-database initialization, post-heartbeat finalization clocks,
+configured lease renewal, typed checkpoint recovery for assessment and CV
+content, and cooperative dispatcher draining are implemented. Focused CLI,
+dispatcher, runner, and repository tests pass; final full-suite, lint, type,
+schema, lockfile, and whitespace results are recorded in the completed Fix 1
+plan.
+
+Task 9 Fix 2 verification for issue #43: checkpoint provenance is now typed,
+allowlisted, durably stored, and preserved exactly through valid assessment
+and CV replays; legacy, malformed, or invalid checkpoints fall back to fresh
+generation. Dispatcher shutdown now has separate cooperative and forced
+cleanup budgets, with launcher supervision covering the complete contract, and
+fractional work leases retain microsecond precision. `uv run pytest` — 383
+passed; `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy
+app tests scripts`, `uv run python scripts/generate_ai_schemas.py --check`,
+`uv lock --check`, and `git diff --check` also passed.
+
+Task 9 Fix 3 verification: dispatcher idle waits are stop-aware, surviving
+workers remain supervised through terminate/kill cleanup, and forced or failed
+dispatcher shutdown propagates a non-zero launcher status. CV checkpoints now
+include an allowlisted target-role hash, so unchanged roles replay while role
+changes and legacy null hashes fall back to fresh generation. Transient SQLite
+heartbeat contention retries on the next interval while ownership errors stop
+renewal. Focused Fix 3 tests — 127 passed; `uv run pytest` — 391 passed;
+Ruff, mypy, generated-schema, lockfile, and whitespace checks also passed.
+
+Task 9 Fix 4 verification: reclaimed live worker IDs remain reserved in the
+dispatcher registry while unrelated queued work can fill open capacity. The
+launcher now confirms termination after cooperative, terminate, and kill
+phases for both dispatcher and server, reports forced or incomplete cleanup as
+non-zero, and preserves an initiating child failure status. Focused dispatcher
+tests — 8 passed; focused CLI tests — 16 passed; combined regression tests —
+24 passed; `uv run pytest` — 401 passed. Ruff, mypy, generated-schema,
+lockfile, and whitespace checks also passed. No README or AGENTS change is
+required.
 
 ### Task 10: Add setup readiness and OpenAI acknowledgement UI
 

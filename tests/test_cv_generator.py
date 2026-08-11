@@ -31,6 +31,8 @@ from app.cv.generator import (
     CvGenerationService,
     CvGroundingError,
     CvInputChangedError,
+    _hash_text,
+    _schema_hash,
     validate_cited_cv_content,
 )
 from app.cv_generations import (
@@ -46,7 +48,12 @@ from app.settings import (
     load_ai_settings,
     validate_private_inputs,
 )
-from app.work.models import WorkType, canonical_timestamp
+from app.work.models import (
+    WorkCheckpoint,
+    WorkCheckpointProvenance,
+    WorkType,
+    canonical_timestamp,
+)
 from app.work.repository import StaleWorkerError, WorkRepository, WorkStateError
 from tests.fixtures.assessment_cases import assessment_result
 
@@ -562,6 +569,190 @@ def test_generation_is_cited_role_targeted_rendered_and_persisted(
             "current_stage"
         ]
         == "Assessing"
+    )
+
+
+def test_valid_cv_checkpoint_reuses_exact_provenance(
+    database_path: str, tmp_path: Path
+) -> None:
+    application_id, assessment_id, _, artefacts = prepared_workflow(
+        database_path, tmp_path
+    )
+    service, fake, _ = build_service(
+        database_path, tmp_path, cv_content(), artefacts=artefacts
+    )
+    work_id, worker_token = generation_work_credentials(
+        database_path, application_id, assessment_id, "2026-08-07T11:00:00Z"
+    )
+    generation_input = CvGenerationRepository(database_path).get_input(
+        application_id, assessment_id
+    )
+    checkpoint_path = (
+        Path(generation_input.artefact_directory)
+        / "cv-generations"
+        / "checkpoint"
+        / "cv-content.json"
+    ).as_posix()
+    artefacts.write_json(checkpoint_path, cv_content().model_dump(mode="json"))
+    provenance = WorkCheckpointProvenance(
+        model="gpt-original",
+        provider="openai",
+        response_ids=("response-original", "response-repair"),
+        input_tokens=30,
+        output_tokens=20,
+        total_tokens=50,
+        repair_attempted=True,
+    )
+    instructions = service._instructions_path.read_text(encoding="utf-8")
+    checkpoint_hashes: dict[str, str | None] = {
+        "profile_sha256": service._inputs.profile_sha256,
+        "jd_sha256": _hash_text(generation_input.full_jd),
+        "assessment_result_sha256": generation_input.assessment_result_sha256,
+        "role_sha256": _hash_text(generation_input.role.strip()),
+        "prompt_sha256": _hash_text(instructions),
+        "schema_sha256": _schema_hash(),
+        "template_sha256": service._inputs.template_sha256,
+        "layout_sha256": service._inputs.layout_sha256,
+    }
+    repository = WorkRepository(database_path)
+    repository.checkpoint(
+        work_id,
+        worker_token,
+        "cv_content",
+        checkpoint_path,
+        artefacts.sha256(checkpoint_path),
+        hashes=checkpoint_hashes,
+        provenance=provenance,
+    )
+    work = repository.get(work_id)
+
+    execution = service.execute(
+        application_id,
+        assessment_id,
+        "2026-08-07T12:00:00+00:00",
+        work_id=work_id,
+        worker_token=worker_token,
+        resume_checkpoint=WorkCheckpoint(
+            step=work.current_step,
+            path=work.checkpoint_path or "",
+            sha256=work.checkpoint_sha256 or "",
+            hashes=checkpoint_hashes,
+            provenance=work.checkpoint_provenance,
+        ),
+    )
+
+    assert execution.content == cv_content()
+    assert fake.requests == []
+    stored = CvGenerationRepository(database_path).get(execution.generation_id)
+    assert stored["model"] == "gpt-original"
+    assert stored["provider"] == "openai"
+    assert stored["response_ids"] == ["response-original", "response-repair"]
+    assert stored["input_tokens"] == 30
+    assert stored["output_tokens"] == 20
+    assert stored["total_tokens"] == 50
+    assert stored["repair_attempted"] == 1
+
+
+def test_changed_role_invalidates_cv_checkpoint_and_replaces_hash(
+    database_path: str, tmp_path: Path
+) -> None:
+    application_id, assessment_id, _, artefacts = prepared_workflow(
+        database_path, tmp_path
+    )
+    service, fake, _ = build_service(
+        database_path, tmp_path, cv_content(), artefacts=artefacts
+    )
+    work_id, worker_token = generation_work_credentials(
+        database_path, application_id, assessment_id, "2026-08-07T11:00:00Z"
+    )
+    generation_input = CvGenerationRepository(database_path).get_input(
+        application_id, assessment_id
+    )
+    checkpoint_path = (
+        Path(generation_input.artefact_directory)
+        / "cv-generations"
+        / "checkpoint"
+        / "cv-content.json"
+    ).as_posix()
+    artefacts.write_json(checkpoint_path, cv_content().model_dump(mode="json"))
+    provenance = WorkCheckpointProvenance(
+        model="gpt-original",
+        provider="openai",
+        response_ids=("response-original",),
+        input_tokens=30,
+        output_tokens=20,
+        total_tokens=50,
+        repair_attempted=False,
+    )
+    instructions = service._instructions_path.read_text(encoding="utf-8")
+    old_hashes: dict[str, str | None] = {
+        "profile_sha256": service._inputs.profile_sha256,
+        "jd_sha256": _hash_text(generation_input.full_jd),
+        "assessment_result_sha256": generation_input.assessment_result_sha256,
+        "role_sha256": _hash_text(generation_input.role),
+        "prompt_sha256": _hash_text(instructions),
+        "schema_sha256": _schema_hash(),
+        "template_sha256": service._inputs.template_sha256,
+        "layout_sha256": service._inputs.layout_sha256,
+    }
+    repository = WorkRepository(database_path)
+    repository.checkpoint(
+        work_id,
+        worker_token,
+        "cv_content",
+        checkpoint_path,
+        artefacts.sha256(checkpoint_path),
+        hashes=old_hashes,
+        provenance=provenance,
+    )
+    Repository(database_path).update_application(
+        application_id,
+        {"role": "Staff Python Engineer", "company": "Acme"},
+    )
+
+    def checkpoint(
+        step: str,
+        path: str,
+        sha256: str,
+        hashes: dict[str, str | None],
+        checkpoint_provenance: WorkCheckpointProvenance,
+    ) -> None:
+        repository.checkpoint(
+            work_id,
+            worker_token,
+            step,
+            path,
+            sha256,
+            hashes=hashes,
+            provenance=checkpoint_provenance,
+        )
+
+    work = repository.get(work_id)
+    execution = service.execute(
+        application_id,
+        assessment_id,
+        "2026-08-07T12:00:00+00:00",
+        work_id=work_id,
+        worker_token=worker_token,
+        checkpoint=checkpoint,
+        resume_checkpoint=WorkCheckpoint(
+            step=work.current_step,
+            path=work.checkpoint_path or "",
+            sha256=work.checkpoint_sha256 or "",
+            hashes=old_hashes,
+            provenance=work.checkpoint_provenance,
+        ),
+    )
+
+    assert len(fake.requests) == 1
+    assert json.loads(fake.requests[0].input_text)["target_role"] == (
+        "Staff Python Engineer"
+    )
+    assert execution.candidate.filename == (
+        "Avery Morgan - Staff Python Engineer.docx"
+    )
+    assert repository.get(work_id).role_sha256 == _hash_text(
+        "Staff Python Engineer"
     )
 
 

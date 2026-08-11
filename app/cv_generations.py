@@ -249,7 +249,7 @@ class CvGenerationRepository:
             connection.execute("BEGIN IMMEDIATE")
             queued_at = canonical_timestamp(queued_at, "queued time")
             row = connection.execute(
-                """SELECT outcome, profile_sha256, jd_sha256
+                """SELECT outcome, profile_sha256, jd_sha256, result_sha256
                 FROM assessments WHERE id = ? AND application_id = ?""",
                 (assessment_id, application_id),
             ).fetchone()
@@ -280,9 +280,9 @@ class CvGenerationRepository:
                     """INSERT INTO work_items (
                         id, application_id, work_type, state, available_at,
                         current_step, queued_at, assessment_id,
-                        profile_sha256, jd_sha256
+                        profile_sha256, jd_sha256, assessment_result_sha256
                     ) VALUES (?, ?, 'cv_generation', 'queued', ?, 'generation',
-                              ?, ?, ?, ?)""",
+                              ?, ?, ?, ?, ?)""",
                     (
                         uuid4().hex,
                         application_id,
@@ -291,6 +291,7 @@ class CvGenerationRepository:
                         assessment_id,
                         str(row["profile_sha256"]),
                         str(row["jd_sha256"]),
+                        str(row["result_sha256"]),
                     ),
                 )
             except sqlite3.IntegrityError as error:

@@ -33,6 +33,8 @@ from app.assessment.service import (
     AssessmentExecution,
     AssessmentInputChangedError,
     AssessmentService,
+    _hash_text,
+    _schema_hash,
 )
 from app.assessment.taxonomy import get_taxonomy
 from app.assessments import (
@@ -43,7 +45,7 @@ from app.assessments import (
 from app.database import connect, initialize_database
 from app.repository import Repository
 from app.settings import load_ai_settings
-from app.work.models import WorkType
+from app.work.models import WorkCheckpoint, WorkCheckpointProvenance, WorkType
 from app.work.repository import StaleWorkerError, WorkRepository
 from tests.fixtures.assessment_cases import assessment_result
 
@@ -312,6 +314,84 @@ def test_matched_assessment_is_grounded_scored_and_persisted(
     analysis = artefacts.read_json(execution.analysis_path)
     assert analysis["outcome"] == "matched"
     assert analysis["final_score"] == 100.0
+
+
+def test_valid_assessment_checkpoint_reuses_exact_provenance(
+    database_path: str, tmp_path: Path
+) -> None:
+    initialize_database(database_path)
+    application_id = create_application(database_path)
+    service, fake, profile_path, artefacts = build_service(
+        database_path, tmp_path, assessment_result()
+    )
+    work_id, worker_token = assessment_work_credentials(
+        database_path, application_id
+    )
+    application = AssessmentRepository(database_path).get_application(
+        application_id
+    )
+    checkpoint_path = (
+        Path(application.artefact_directory)
+        / "assessments"
+        / "checkpoint"
+        / "assessment-result.json"
+    ).as_posix()
+    artefacts.write_json(
+        checkpoint_path, assessment_result().model_dump(mode="json")
+    )
+    provenance = WorkCheckpointProvenance(
+        model="gpt-original",
+        provider="openai",
+        response_ids=("response-original", "response-repair"),
+        input_tokens=20,
+        output_tokens=10,
+        total_tokens=30,
+        repair_attempted=True,
+    )
+    profile_sha256 = sha256_bytes(profile_path.read_bytes())
+    instructions = service._instructions_path.read_text(encoding="utf-8")
+    checkpoint_hashes: dict[str, str | None] = {
+        "profile_sha256": profile_sha256,
+        "jd_sha256": _hash_text(application.full_jd),
+        "prompt_sha256": _hash_text(instructions),
+        "schema_sha256": _schema_hash(),
+    }
+    repository = WorkRepository(database_path)
+    repository.checkpoint(
+        work_id,
+        worker_token,
+        "assessment_result",
+        checkpoint_path,
+        artefacts.sha256(checkpoint_path),
+        hashes=checkpoint_hashes,
+        provenance=provenance,
+    )
+    work = repository.get(work_id)
+
+    execution = service.execute(
+        application_id,
+        "2026-08-07T10:00:00+00:00",
+        work_id=work_id,
+        worker_token=worker_token,
+        resume_checkpoint=WorkCheckpoint(
+            step=work.current_step,
+            path=work.checkpoint_path or "",
+            sha256=work.checkpoint_sha256 or "",
+            hashes=checkpoint_hashes,
+            provenance=work.checkpoint_provenance,
+        ),
+    )
+
+    assert execution.result == assessment_result()
+    assert fake.requests == []
+    stored = AssessmentRepository(database_path).get(execution.assessment_id)
+    assert stored["model"] == "gpt-original"
+    assert stored["provider"] == "openai"
+    assert stored["response_ids"] == ["response-original", "response-repair"]
+    assert stored["input_tokens"] == 20
+    assert stored["output_tokens"] == 10
+    assert stored["total_tokens"] == 30
+    assert stored["repair_attempted"] == 1
 
 
 def test_assessment_rejects_blank_credentials_before_provider_or_profile_read(

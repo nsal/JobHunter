@@ -19,6 +19,10 @@ def test_schema_contains_fresh_lifecycle_tables(database_path: str) -> None:
             row[1]
             for row in connection.execute("PRAGMA table_info(applications)")
         }
+        work_columns = {
+            row[1]
+            for row in connection.execute("PRAGMA table_info(work_items)")
+        }
 
     assert names == {
         "applications",
@@ -33,7 +37,36 @@ def test_schema_contains_fresh_lifecycle_tables(database_path: str) -> None:
     assert "full_jd" in columns
     assert "artefact_directory" in columns
     assert "cv_path" not in columns
+    assert "role_sha256" in work_columns
     assert "submission_history" not in names
+
+
+def test_work_schema_validates_nullable_role_checkpoint_hash(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+
+    with connect(database_path) as connection:
+        connection.execute(
+            """INSERT INTO applications(
+                role, company, full_jd, created_at, artefact_directory
+            ) VALUES ('Dev', 'Acme', 'JD', '2026-01-01', 'Acme/role-hash')"""
+        )
+        connection.execute(
+            """INSERT INTO work_items(
+                id, application_id, work_type, state, available_at,
+                current_step, queued_at, role_sha256
+            ) VALUES ('null-role-hash', 1, 'assessment', 'queued',
+                      '2026-01-01', 'assessment', '2026-01-01', NULL)"""
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """INSERT INTO work_items(
+                    id, application_id, work_type, state, available_at,
+                    current_step, queued_at, role_sha256
+                ) VALUES ('bad-role-hash', 1, 'assessment', 'queued',
+                          '2026-01-01', 'assessment', '2026-01-01', 'bad')"""
+            )
 
 
 def test_application_constraints_require_jd_and_created_at(
