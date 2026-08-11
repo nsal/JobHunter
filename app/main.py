@@ -21,6 +21,10 @@ from starlette.types import Scope
 
 from app.database import STAGES, initialize_database
 from app.repository import ApplicationNotFoundError, Repository
+from app.routes import add_workflow_to_applications, application_workflow
+from app.routes.artefacts import router as artefacts_router
+from app.routes.assessments import router as assessments_router
+from app.routes.cv_generations import router as cv_generations_router
 from app.routes.setup import (
     SetupIncompleteError,
     inspect_setup,
@@ -134,6 +138,9 @@ def create_app(
 
     app = FastAPI(title="JobHunter", lifespan=lifespan)
     app.include_router(router)
+    app.include_router(assessments_router)
+    app.include_router(cv_generations_router)
+    app.include_router(artefacts_router)
     static_directory = ROOT / "app" / "static"
     app.mount(
         "/static",
@@ -148,7 +155,17 @@ def create_app(
     @app.get("/", response_class=HTMLResponse)
     def application_list(request: Request, q: str = "") -> HTMLResponse:
         search = q.strip()
-        applications = request.app.state.repository.list_applications(search)
+        repository = request.app.state.repository
+        applications = repository.list_applications(search)
+        for application in applications:
+            repository.promote_completed_generation(int(application["id"]))
+        if applications:
+            applications = repository.list_applications(search)
+        add_workflow_to_applications(
+            applications,
+            request.app.state.database_path,
+            request.app.state.project_root,
+        )
         return templates.TemplateResponse(
             request,
             "applications/index.html",
@@ -243,15 +260,29 @@ def create_app(
         application_id: int, request: Request
     ) -> HTMLResponse:
         try:
+            request.app.state.repository.promote_completed_generation(
+                application_id
+            )
             application = request.app.state.repository.get_application(
                 application_id
             )
         except ApplicationNotFoundError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
+        workflow = application_workflow(
+            request.app.state.database_path,
+            request.app.state.project_root,
+            application,
+        )
+        application.update(workflow)
         return templates.TemplateResponse(
             request,
             "applications/detail.html",
-            {"application": application, "stages": STAGES, "now": now_value()},
+            {
+                "application": application,
+                **workflow,
+                "stages": STAGES,
+                "now": now_value(),
+            },
         )
 
     @app.post("/applications/{application_id}", response_class=HTMLResponse)
@@ -424,6 +455,13 @@ def create_app(
                 status_code=422,
             )
         if request.headers.get("HX-Request"):
+            application.update(
+                application_workflow(
+                    request.app.state.database_path,
+                    request.app.state.project_root,
+                    application,
+                )
+            )
             return templates.TemplateResponse(
                 request,
                 "applications/_application_row.html",
@@ -466,6 +504,13 @@ def create_app(
         except ApplicationNotFoundError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
         if request.headers.get("HX-Request"):
+            application.update(
+                application_workflow(
+                    request.app.state.database_path,
+                    request.app.state.project_root,
+                    application,
+                )
+            )
             return templates.TemplateResponse(
                 request,
                 "applications/_application_row.html",

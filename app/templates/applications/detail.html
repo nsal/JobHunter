@@ -18,6 +18,13 @@
   <dt>Submitted</dt><dd>{{ application.submitted_date|date_only }}</dd>
   <dt>Created</dt><dd>{{ application.created_at|date_only }}</dd>
 </dl>
+{% include 'applications/_work_status.html' %}
+{% if artefacts_available %}
+  <form class="artefacts-form" method="post"
+        action="/applications/{{ application.id }}/artefacts/open">
+    <button type="submit">Open artefacts</button>
+  </form>
+{% endif %}
 {% include 'applications/_application_edit_form.html' %}
 {% include 'applications/_stage_history.html' %}
 {% endblock %}

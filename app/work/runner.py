@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.database import initialize_database
+from app.repository import Repository
 from app.settings import AiSettings, load_ai_settings, validate_private_inputs
 from app.work.models import (
     WorkCheckpoint,
@@ -261,6 +262,9 @@ class WorkerRunner:
                     checkpoint=checkpoint,
                     completion_clock=completion_clock,
                     resume_checkpoint=resume_checkpoint,
+                )
+                Repository(request.database_path).promote_completed_generation(
+                    work.application_id
                 )
             else:
                 raise RuntimeError("Unsupported work type.")

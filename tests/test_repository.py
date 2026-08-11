@@ -2,7 +2,7 @@ from typing import Any
 
 import pytest
 
-from app.database import initialize_database
+from app.database import connect, initialize_database
 from app.repository import ApplicationNotFoundError, Repository
 
 
@@ -14,6 +14,67 @@ def application_values(**overrides: Any) -> dict[str, Any]:
     }
     values.update(overrides)
     return values
+
+
+def seed_completed_generation(
+    database_path: str, application_id: int, completed_at: str
+) -> None:
+    """Seed the minimum durable records needed for promotion tests."""
+    with connect(database_path) as connection:
+        connection.execute(
+            """INSERT INTO assessments(
+                id, application_id, outcome, final_score,
+                supporting_alignment, mandatory_coverage, threshold,
+                all_mandatory_matched, failed_hard_gates,
+                ambiguous_hard_gates, model, model_sha256, schema_version,
+                schema_sha256, instruction_sha256, taxonomy_version,
+                taxonomy_sha256, profile_sha256, jd_sha256, provider,
+                response_ids, input_tokens, output_tokens, total_tokens,
+                repair_attempted, result_path, result_sha256, analysis_path,
+                analysis_sha256, completed_at
+            ) VALUES ('assessment-1', ?, 'matched', 90, 90, 90, 80, 1,
+                      '[]', '[]', 'model', ?, 'v1', ?, ?, 'taxonomy', ?,
+                      ?, ?, 'test', '[]', 1, 2, 3, 0, 'result.json', ?,
+                      'analysis.json', ?, '2026-01-01T07:30:00+00:00')""",
+            (
+                application_id,
+                "a" * 64,
+                "b" * 64,
+                "c" * 64,
+                "d" * 64,
+                "e" * 64,
+                "f" * 64,
+                "1" * 64,
+                "2" * 64,
+            ),
+        )
+        connection.execute(
+            """INSERT INTO cv_generations (
+                id, application_id, assessment_id, model, model_sha256,
+                schema_version, schema_sha256, instruction_sha256,
+                profile_sha256, jd_sha256, assessment_result_sha256,
+                template_sha256, layout_sha256, provider, response_ids,
+                input_tokens, output_tokens, total_tokens, repair_attempted,
+                content_path, content_sha256, candidate_path,
+                candidate_sha256, completed_at
+            ) VALUES ('generation-1', ?, 'assessment-1', 'model', ?, 'v1',
+                      ?, ?, ?, ?, ?, ?, ?, 'test', '[]', 1, 2, 3, 0,
+                      'content.json', ?, 'candidate.docx', ?, ?)""",
+            (
+                application_id,
+                "a" * 64,
+                "b" * 64,
+                "c" * 64,
+                "d" * 64,
+                "e" * 64,
+                "f" * 64,
+                "1" * 64,
+                "2" * 64,
+                "3" * 64,
+                "4" * 64,
+                completed_at,
+            ),
+        )
 
 
 def test_create_starts_assessing_without_a_submission_date(
@@ -297,3 +358,47 @@ def test_missing_application_operations_raise(database_path: str) -> None:
         repository.get_application(999)
     with pytest.raises(ApplicationNotFoundError):
         repository.update_application(999, application_values())
+
+
+def test_generation_promotion_canonicalizes_offset_stage_timestamps(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+    repository = Repository(database_path)
+    application_id = repository.create_application(
+        application_values(), "2026-01-01T12:00:00+05:00"
+    )
+    seed_completed_generation(
+        database_path, application_id, "2026-01-01T08:00:00+00:00"
+    )
+
+    assert repository.promote_completed_generation(application_id) is True
+
+    application = repository.get_application(application_id)
+    closed_stage = application["history"][1]
+    assert closed_stage["effective_from"] == (
+        "2026-01-01T07:00:00.000000+00:00"
+    )
+    assert closed_stage["effective_to"] == "2026-01-01T08:00:00.000000+00:00"
+    assert closed_stage["effective_to"] >= closed_stage["effective_from"]
+    assert application["history"][0]["stage"] == "Ready for review"
+    assert repository.promote_completed_generation(application_id) is False
+    assert len(repository.get_application(application_id)["history"]) == 2
+
+
+def test_older_generation_does_not_change_offset_stage_history(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+    repository = Repository(database_path)
+    application_id = repository.create_application(
+        application_values(), "2026-01-01T12:00:00+05:00"
+    )
+    seed_completed_generation(
+        database_path, application_id, "2026-01-01T06:00:00+00:00"
+    )
+    before = repository.get_application(application_id)["history"]
+
+    assert repository.promote_completed_generation(application_id) is False
+
+    assert repository.get_application(application_id)["history"] == before

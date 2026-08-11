@@ -212,6 +212,60 @@ class Repository:
         application["history"] = [dict(item) for item in history]
         return application
 
+    def promote_completed_generation(self, application_id: int) -> bool:
+        """Record Ready for review when a completed draft is first observed.
+
+        CV persistence and lifecycle history remain separate transaction
+        owners.  The web boundary reconciles the lifecycle idempotently when
+        it observes the durable completed generation.
+        """
+        with connect(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            current = connection.execute(
+                """SELECT id, stage, stage_sequence, effective_from
+                FROM application_stage_history
+                WHERE application_id = ? AND is_current = 1""",
+                (application_id,),
+            ).fetchone()
+            generation = connection.execute(
+                """SELECT completed_at FROM cv_generations
+                WHERE application_id = ?
+                ORDER BY completed_at DESC, id DESC LIMIT 1""",
+                (application_id,),
+            ).fetchone()
+            if current is None or generation is None:
+                return False
+            if current["stage"] not in {"Assessing", "Mismatch"}:
+                return False
+            completed_at = canonical_timestamp(
+                str(generation["completed_at"]),
+                "CV generation completion time",
+            )
+            current_from = canonical_timestamp(
+                str(current["effective_from"]), "Current stage effective time"
+            )
+            if completed_at < current_from:
+                return False
+            connection.execute(
+                """UPDATE application_stage_history
+                SET effective_from = ?, effective_to = ?, is_current = 0
+                WHERE id = ?""",
+                (current_from, completed_at, current["id"]),
+            )
+            connection.execute(
+                """INSERT INTO application_stage_history (
+                    application_id, stage, stage_sequence, stage_description,
+                    effective_from, is_current
+                ) VALUES (?, 'Ready for review', ?, ?, ?, 1)""",
+                (
+                    application_id,
+                    int(current["stage_sequence"]) + 1,
+                    "Editable DOCX draft; human review required.",
+                    completed_at,
+                ),
+            )
+        return True
+
     def update_application(
         self, application_id: int, values: Mapping[str, Any]
     ) -> None:

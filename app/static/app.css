@@ -185,6 +185,18 @@ th { background: #eaf1f8; color: #17212b; }
   padding: .35rem .45rem;
 }
 .error { border-left: .3rem solid #bd2727; padding: .5rem .75rem; color: #9b1515; }
+.muted { color: #52606d; }
+.workflow-panel {
+  border: 1px solid #b8c2cc;
+  margin: 1.25rem 0;
+  max-width: 56rem;
+  padding: 1rem;
+}
+.workflow-heading { align-items: baseline; display: flex; gap: 1rem; justify-content: space-between; }
+.status-badge { background: #e7edf2; border-radius: .25rem; padding: .2rem .45rem; }
+.review-warning { border-left: .3rem solid #b27b00; padding-left: .75rem; }
+.artefacts-form { margin: 1rem 0; }
+.artefacts-link { color: #164e8a; text-decoration: underline; }
 .details { display: grid; grid-template-columns: 12rem 1fr; gap: .5rem 1rem; }
 .details dt { font-weight: 700; }
 .details dd { margin: 0; }.preserve-lines { white-space: pre-wrap; }

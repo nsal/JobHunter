@@ -21,7 +21,13 @@
     <button class="table-edit table-cell-content" type="button" data-open-stage-editor
             data-stage-editor-url="/applications/{{ application.id }}/stage-editor">
       {{ application.current_stage }}<br>{{ application.current_stage_description or '—' }}
+      {% if application.active_work %}<br><small>{{ 'Assessment' if application.active_work.work_type.value == 'assessment' else 'CV generation' }}: {{ application.active_work.state.value }}</small>{% elif application.latest_work and application.latest_work.state.value == 'failed' %}<br><small>{{ 'Assessment' if application.latest_work.work_type.value == 'assessment' else 'CV generation' }}: failed</small>{% elif application.assessment %}<br><small>Assessment: {{ application.assessment.outcome }}</small>{% endif %}
     </button>
+    {% if application.artefacts_available %}
+      <form method="post" action="/applications/{{ application.id }}/artefacts/open">
+        <button class="table-edit artefacts-link" type="submit">Open artefacts</button>
+      </form>
+    {% endif %}
   </td>
   <td class="application-notes-cell" data-label="Notes"
       title="{{ application.notes or 'Not supplied' }}">

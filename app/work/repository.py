@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.ai.providers.base import StructuredGenerationError
+from app.consent import has_openai_profile_sharing_consent
 from app.database import connect
 from app.work.models import (
     WorkCheckpointProvenance,
@@ -103,6 +104,7 @@ class WorkRepository:
         schema_sha256: str | None = None,
         template_sha256: str | None = None,
         layout_sha256: str | None = None,
+        require_profile_consent: bool = False,
     ) -> str:
         """Queue work, rejecting a second active item transactionally."""
         queued_at = canonical_timestamp(queued_at, "queued time")
@@ -115,9 +117,24 @@ class WorkRepository:
         work_id = uuid4().hex
         with connect(self.database_path) as connection:
             connection.execute("BEGIN IMMEDIATE")
+            if (
+                require_profile_consent
+                and not has_openai_profile_sharing_consent(connection)
+            ):
+                raise WorkStateError(
+                    "Remote profile transmission is not acknowledged."
+                )
+            current_stage = connection.execute(
+                """SELECT stage FROM application_stage_history
+                WHERE application_id = ? AND is_current = 1""",
+                (application_id,),
+            ).fetchone()
+            if current_stage is None:
+                raise WorkStateError("Application was not found.")
             if work_type is WorkType.CV_GENERATION:
                 assessment = connection.execute(
-                    """SELECT application_id, profile_sha256, jd_sha256
+                    """SELECT application_id, outcome, profile_sha256,
+                    jd_sha256
                     FROM assessments WHERE id = ?""",
                     (assessment_id,),
                 ).fetchone()
@@ -126,6 +143,15 @@ class WorkRepository:
                     or int(assessment["application_id"]) != application_id
                 ):
                     raise WorkStateError("CV assessment was not found.")
+                expected_stage = (
+                    "Assessing"
+                    if assessment["outcome"] == "matched"
+                    else "Mismatch"
+                )
+                if current_stage["stage"] != expected_stage:
+                    raise WorkStateError(
+                        "Application is no longer eligible for CV generation."
+                    )
                 completed = connection.execute(
                     """SELECT 1 FROM cv_generations
                     WHERE application_id = ? AND assessment_id = ?""",
@@ -144,6 +170,10 @@ class WorkRepository:
                     raise WorkStateError("CV work hashes do not match.")
                 profile_sha256 = expected_profile
                 jd_sha256 = expected_jd
+            elif current_stage["stage"] != "Assessing":
+                raise WorkStateError(
+                    "Application is no longer eligible for assessment."
+                )
             try:
                 connection.execute(
                     """INSERT INTO work_items (
@@ -188,6 +218,17 @@ class WorkRepository:
         if row is None:
             raise WorkNotFoundError("Work item not found.")
         return _row_to_item(row)
+
+    def list_for_application(self, application_id: int) -> list[WorkItem]:
+        """Return all work for an application, newest work first."""
+        with connect(self.database_path) as connection:
+            rows = connection.execute(
+                """SELECT * FROM work_items
+                WHERE application_id = ?
+                ORDER BY queued_at DESC, id DESC""",
+                (application_id,),
+            ).fetchall()
+        return [_row_to_item(row) for row in rows]
 
     def list_available(self, now: str, limit: int) -> list[WorkItem]:
         """Return queued work that can be claimed now.

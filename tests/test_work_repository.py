@@ -9,6 +9,7 @@ from app.ai.providers.base import (
     StructuredGenerationError,
     TokenUsage,
 )
+from app.consent import ConsentRepository
 from app.database import connect, initialize_database
 from app.work.models import WorkCheckpointProvenance, WorkState, WorkType
 from app.work.repository import (
@@ -43,6 +44,7 @@ def seed_assessment(
     database_path: str,
     application_id: int,
     assessment_id: str = "assessment-1",
+    outcome: str = "matched",
 ) -> None:
     with connect(database_path) as connection:
         connection.execute(
@@ -56,13 +58,14 @@ def seed_assessment(
                 response_ids, input_tokens, output_tokens, total_tokens,
                 repair_attempted, result_path, result_sha256, analysis_path,
                 analysis_sha256, completed_at
-            ) VALUES (?, ?, 'matched', 90, 90, 90, 80, 1, '[]', '[]',
+            ) VALUES (?, ?, ?, 90, 90, 90, 80, 1, '[]', '[]',
                       'model', ?, 'v1', ?, ?, 'taxonomy', ?, ?, ?, 'test',
                       '[]', 1, 2, 3, 0, 'result.json', ?, 'analysis.json',
                       ?, '2026-01-01T01:00:00+00:00')""",
             (
                 assessment_id,
                 application_id,
+                outcome,
                 "a" * 64,
                 "b" * 64,
                 "c" * 64,
@@ -72,6 +75,30 @@ def seed_assessment(
                 "1" * 64,
                 "2" * 64,
             ),
+        )
+
+
+def move_application_to_stage(
+    database_path: str, application_id: int, stage: str
+) -> None:
+    """Move a test application to a new current lifecycle stage."""
+    with connect(database_path) as connection:
+        current = connection.execute(
+            """SELECT id, stage_sequence FROM application_stage_history
+            WHERE application_id = ? AND is_current = 1""",
+            (application_id,),
+        ).fetchone()
+        assert current is not None
+        connection.execute(
+            "UPDATE application_stage_history SET is_current = 0 WHERE id = ?",
+            (current["id"],),
+        )
+        connection.execute(
+            """INSERT INTO application_stage_history (
+                application_id, stage, stage_sequence, effective_from,
+                is_current
+            ) VALUES (?, ?, ?, '2026-01-02T00:00:00+00:00', 1)""",
+            (application_id, stage, int(current["stage_sequence"]) + 1),
         )
 
 
@@ -303,6 +330,122 @@ def test_generic_cv_enqueue_binds_assessment_hashes(
     work = WorkRepository(database_path).get(work_id)
     assert work.profile_sha256 == "e" * 64
     assert work.jd_sha256 == "f" * 64
+
+
+def test_assessment_enqueue_rejects_retry_outside_assessing(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+    application_id = create_application(database_path)
+    repository = WorkRepository(database_path)
+    work_id = repository.enqueue(
+        application_id, WorkType.ASSESSMENT, "2026-01-01T00:00:00Z"
+    )
+    with connect(database_path) as connection:
+        connection.execute(
+            "UPDATE work_items SET state = 'failed', error_code = 'timeout' "
+            "WHERE id = ?",
+            (work_id,),
+        )
+    move_application_to_stage(database_path, application_id, "Mismatch")
+
+    with pytest.raises(WorkStateError, match="eligible for assessment"):
+        repository.enqueue(
+            application_id, WorkType.ASSESSMENT, "2026-01-02T00:00:00Z"
+        )
+
+    assert len(repository.list_for_application(application_id)) == 1
+
+
+def test_profile_consent_is_rechecked_inside_enqueue_transaction(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+    application_id = create_application(database_path)
+    consent = ConsentRepository(database_path)
+    consent.acknowledge_openai_profile_sharing("2026-01-01T00:00:00Z")
+    consent.revoke_openai_profile_sharing("2026-01-01T00:00:01Z")
+
+    with pytest.raises(
+        WorkStateError, match="Remote profile transmission is not acknowledged"
+    ):
+        WorkRepository(database_path).enqueue(
+            application_id,
+            WorkType.ASSESSMENT,
+            "2026-01-01T00:00:02Z",
+            require_profile_consent=True,
+        )
+
+    assert not WorkRepository(database_path).list_for_application(
+        application_id
+    )
+
+
+@pytest.mark.parametrize("stage", ["Mismatch", "Submitted"])
+def test_cv_enqueue_rejects_matched_retry_outside_assessing(
+    database_path: str,
+    stage: str,
+) -> None:
+    initialize_database(database_path)
+    application_id = create_application(database_path)
+    seed_assessment(database_path, application_id)
+    repository = WorkRepository(database_path)
+    work_id = repository.enqueue(
+        application_id,
+        WorkType.CV_GENERATION,
+        "2026-01-01T00:00:00Z",
+        assessment_id="assessment-1",
+    )
+    with connect(database_path) as connection:
+        connection.execute(
+            "UPDATE work_items SET state = 'failed', error_code = 'timeout' "
+            "WHERE id = ?",
+            (work_id,),
+        )
+    move_application_to_stage(database_path, application_id, stage)
+
+    with pytest.raises(WorkStateError, match="eligible for CV generation"):
+        repository.enqueue(
+            application_id,
+            WorkType.CV_GENERATION,
+            "2026-01-02T00:00:00Z",
+            assessment_id="assessment-1",
+        )
+
+    assert len(repository.list_for_application(application_id)) == 1
+
+
+def test_cv_enqueue_rejects_mismatch_retry_outside_mismatch(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+    application_id = create_application(database_path)
+    seed_assessment(database_path, application_id, outcome="skill_mismatch")
+    move_application_to_stage(database_path, application_id, "Mismatch")
+    repository = WorkRepository(database_path)
+    work_id = repository.enqueue(
+        application_id,
+        WorkType.CV_GENERATION,
+        "2026-01-01T00:00:00Z",
+        assessment_id="assessment-1",
+    )
+    with connect(database_path) as connection:
+        connection.execute(
+            "UPDATE work_items SET state = 'failed', error_code = 'timeout' "
+            "WHERE id = ?",
+            (work_id,),
+        )
+    move_application_to_stage(database_path, application_id, "Assessing")
+
+    with pytest.raises(WorkStateError, match="eligible for CV generation"):
+        repository.enqueue(
+            application_id,
+            WorkType.CV_GENERATION,
+            "2026-01-02T00:00:00Z",
+            assessment_id="assessment-1",
+        )
+
+    assert len(repository.list_for_application(application_id)) == 1
 
 
 def test_transient_failure_retries_once_then_fails(

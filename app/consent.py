@@ -11,6 +11,22 @@ from app.database import connect
 OPENAI_PROFILE_SHARING_CONSENT = "openai_profile_sharing_v1"
 
 
+def has_openai_profile_sharing_consent(
+    connection: sqlite3.Connection,
+) -> bool:
+    """Return consent state from an already-open transaction connection."""
+    row = connection.execute(
+        """SELECT granted_at, revoked_at FROM consents
+        WHERE consent_key = ?""",
+        (OPENAI_PROFILE_SHARING_CONSENT,),
+    ).fetchone()
+    return (
+        row is not None
+        and row["granted_at"] is not None
+        and row["revoked_at"] is None
+    )
+
+
 class ConsentRequiredError(RuntimeError):
     """Raised before private profile content is sent without consent."""
 

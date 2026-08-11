@@ -4,6 +4,8 @@ from pathlib import Path
 import httpx2
 import pytest
 
+from app.repository import Repository
+
 pytestmark = pytest.mark.anyio
 
 APPLICATION_DATA = {
@@ -409,6 +411,7 @@ async def test_dashboard_table_markup_and_agency_labels(
 
 async def test_dashboard_stage_and_notes_editors(
     client: httpx2.AsyncClient,
+    database_path: str,
 ) -> None:
     created = await client.post(
         "/applications",
@@ -416,6 +419,14 @@ async def test_dashboard_stage_and_notes_editors(
         follow_redirects=False,
     )
     location = created.headers["location"]
+    application = Repository(database_path).get_application(1)
+    artefact_directory = (
+        Path(database_path).parent
+        / "private"
+        / "artefacts"
+        / str(application["artefact_directory"])
+    )
+    artefact_directory.mkdir(parents=True)
 
     editor = await client.get(f"{location}/stage-editor")
     assert editor.status_code == 200
@@ -427,6 +438,8 @@ async def test_dashboard_stage_and_notes_editors(
     )
     assert updated_stage.status_code == 200
     assert "Mismatch" in updated_stage.text
+    assert "Assessment: queued" in updated_stage.text
+    assert "Open artefacts" in updated_stage.text
     assert updated_stage.headers["HX-Trigger"] == "close-stage-editor"
 
     notes_editor = await client.get(f"{location}/notes-editor")
@@ -438,6 +451,8 @@ async def test_dashboard_stage_and_notes_editors(
     )
     assert updated_notes.status_code == 200
     assert "Updated notes" in updated_notes.text
+    assert "Assessment: queued" in updated_notes.text
+    assert "Open artefacts" in updated_notes.text
     assert updated_notes.headers["HX-Trigger"] == "close-notes-editor"
 
 

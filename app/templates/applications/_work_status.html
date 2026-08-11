@@ -1,0 +1,44 @@
+<section id="work-status" class="workflow-panel"
+  {% if active_work %}hx-get="/applications/{{ application.id }}/work-status"
+       hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <div class="workflow-heading">
+    <h2>Assessment and draft workflow</h2>
+    <span class="status-badge">{{ application.current_stage }}</span>
+  </div>
+  {% if workflow_error %}<p class="error" role="alert">{{ workflow_error }}</p>{% endif %}
+  {% if active_work %}
+    <p role="status" aria-live="polite">
+      {{ 'Assessment' if active_work.work_type.value == 'assessment' else 'CV generation' }} is
+      {{ active_work.state.value }}{% if active_work.current_step %}
+      ({{ active_work.current_step|replace('_', ' ') }}).{% endif %}
+    </p>
+    <p class="muted">Queued {{ active_work.queued_at }}{% if active_work.started_at %}; started {{ active_work.started_at }}{% endif %}</p>
+    <p class="muted">The page will refresh while background work is active.</p>
+  {% elif latest_work and latest_work.state.value == 'failed' %}
+    <p class="error" role="alert">
+      {{ 'Assessment' if latest_work.work_type.value == 'assessment' else 'CV generation' }} failed.
+      {{ latest_work.error_message or 'Work failed.' }}
+    </p>
+    {% if latest_work.work_type.value == 'assessment' and assessment_retry_available %}
+      <form method="post" action="/applications/{{ application.id }}/assessment/retry">
+        <button type="submit">Retry assessment</button>
+      </form>
+    {% elif latest_work.work_type.value == 'cv_generation' and cv_retry_available %}
+      <form method="post" action="/applications/{{ application.id }}/cv-generations/retry">
+        <button type="submit">Retry CV generation</button>
+      </form>
+    {% endif %}
+  {% elif generation %}
+    <p role="status">Draft generated and ready for review.</p>
+    <p class="muted">Model: {{ generation.model }} · Completed {{ generation.completed_at }}</p>
+    <p class="review-warning">
+      Open the editable DOCX and complete factual, editorial, and pagination
+      review before exporting a PDF or submitting it.
+    </p>
+  {% elif assessment %}
+    <p>Assessment complete. No draft has been generated yet.</p>
+  {% else %}
+    <p role="status">Assessment is queued.</p>
+  {% endif %}
+  {% include 'applications/_assessment.html' %}
+</section>

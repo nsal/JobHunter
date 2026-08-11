@@ -860,6 +860,7 @@ change was required. The Fix 1 plan is archived in `docs/plans/completed/`.
 - Create: `app/routes/assessments.py`
 - Create: `app/routes/cv_generations.py`
 - Create: `app/routes/artefacts.py`
+- Modify: `app/routes/__init__.py`
 - Create: `app/templates/applications/_work_status.html`
 - Create: `app/templates/applications/_assessment.html`
 - Modify: `app/templates/applications/_application_form.html`
@@ -871,35 +872,76 @@ change was required. The Fix 1 plan is archived in `docs/plans/completed/`.
 - Modify: `app/static/app.css`
 - Modify: `app/main.py`
 - Modify: `app/repository.py`
+- Modify: `app/work/repository.py`
+- Modify: `app/work/runner.py`
 - Modify: `tests/test_routes.py`
 - Modify: `tests/test_dashboard_actions.py`
 - Create: `tests/test_assessment_routes.py`
 - Create: `tests/test_cv_generation_routes.py`
 - Create: `tests/test_artefact_routes.py`
 
-- [ ] Create applications by atomically persisting the application, initial
+- [x] Create applications by atomically persisting the application, initial
   assessment, and queued work, then redirect immediately to detail.
-- [ ] Render lifecycle separately from queued/running step status and poll the
+- [x] Render lifecycle separately from queued/running step status and poll the
   focused status fragment only while work is active.
-- [ ] Show score, mandatory coverage, outcome, analysis, gaps, model,
+- [x] Show score, mandatory coverage, outcome, analysis, gaps, model,
   timestamps, generation state, and safe failure/retry guidance.
-- [ ] Add Retry for failed work and `Generate CV anyway` for completed
+- [x] Add Retry for failed work and `Generate CV anyway` for completed
   mismatches; reject duplicate/invalid actions and preserve mismatch results.
-- [ ] Move to `Ready for review` after successful deterministic DOCX
+- [x] Move to `Ready for review` after successful deterministic DOCX
   generation targeted at one page, label the candidate as requiring human
   factual/editorial/pagination review, and retain explicit manual `Submitted`
   transition behavior.
-- [ ] Replace the dashboard CV column with compact assessment/work status and
+- [x] Replace the dashboard CV column with compact assessment/work status and
   add `Open artefacts` on dashboard/detail where the directory exists.
-- [ ] Implement POST-only, origin-checked, containment-checked Finder opening
+- [x] Implement POST-only, origin-checked, containment-checked Finder opening
   through macOS `open` with an argument array and no shell.
-- [ ] Write route/UI tests for immediate redirect, active polling, matched and
+- [x] Write route/UI tests for immediate redirect, active polling, matched and
   mismatch rendering, automatic generation, override, retries, dashboard
   badges, nullable submission, and polling stop.
-- [ ] Write endpoint/error tests for active-work conflict, forged origin,
+- [x] Write endpoint/error tests for active-work conflict, forged origin,
   traversal/symlink, missing directory, unsupported platform, command failure,
   escaped model/error text, and no private path/content leakage.
-- [ ] Run `uv run pytest`; record the passing count before task 12.
+- [x] Run `uv run pytest`; record the passing count before task 12.
+
+Task 11 verification: the asynchronous application workflow UI now redirects
+immediately, reports lifecycle separately from durable work, polls only active
+work, supports mismatch override/retry actions, and offers a same-origin,
+contained macOS Finder handoff. `uv run pytest` — 456 passed. `uv run ruff
+check .`, `uv run ruff format --check .`, `uv run mypy app tests`, generated
+schema drift, `uv lock --check`, and `git diff --check` also passed.
+
+Task 11 Fix 1 verification: workflow action POSTs now enforce same-origin and
+setup readiness before queue insertion, retry actions are coupled to current
+lifecycle and assessment outcome inside the enqueue transaction, and
+assessment analysis is rendered only after its persisted SHA-256 matches.
+Focused route/repository coverage passed 42 tests; `uv run pytest` — 472
+passed. Ruff check and format check, mypy, generated-schema drift, `uv lock
+--check`, and `git diff --check` also passed. The Fix 1 plan is archived in
+`docs/plans/completed/`.
+
+Task 11 Fix 2 verification for [issue #48](https://github.com/nsal/JobHunter/issues/48):
+terminal assessment and CV-generation failures are visible on dashboard rows;
+HTMX stage and notes replacements retain workflow badges and artefact actions;
+and completed-generation promotion canonicalizes both sides of a closed stage
+interval, including existing offset-bearing stage timestamps. Focused
+dashboard, route, and repository coverage passed 44 tests; `uv run pytest` —
+476 passed. `uv run ruff check .`, `uv run ruff format --check .`, `uv run
+mypy app tests`, `uv run python scripts/generate_ai_schemas.py --check`, `uv
+lock --check`, and `git diff --check` also passed. No README or AGENTS change
+was required.
+
+Task 11 Fix 5 verification for [issue #49](https://github.com/nsal/JobHunter/issues/49):
+active workflow fragments now use only `hx-trigger="every 2s"` with
+`hx-swap="outerHTML"`, preventing immediate self-replacement polling loops;
+terminal fragments still remove polling attributes; and a failed mismatch CV
+generation exposes only `Retry CV generation`, while fresh mismatches retain
+`Generate CV anyway`. Focused assessment and CV-generation route coverage
+passed 19 tests; `uv run pytest` — 477 passed. `uv run ruff check .`, `uv run
+ruff format --check .`, `uv run mypy app tests`, `uv run python
+scripts/generate_ai_schemas.py --check`, `uv lock --check`, and `git diff
+--check` also passed. No README or AGENTS change was required. The Fix 5 plan
+is archived in `docs/plans/completed/`.
 
 ### Task 12: Verify v1 acceptance criteria and engineering standards
 

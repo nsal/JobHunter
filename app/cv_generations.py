@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from app.consent import has_openai_profile_sharing_consent
 from app.database import connect
 from app.work.models import (
     canonical_timestamp,
@@ -242,11 +243,23 @@ class CvGenerationRepository:
         )
 
     def enqueue_override(
-        self, application_id: int, assessment_id: str, queued_at: str
+        self,
+        application_id: int,
+        assessment_id: str,
+        queued_at: str,
+        *,
+        require_profile_consent: bool = False,
     ) -> str:
         """Queue one explicit mismatch override without altering its result."""
         with connect(self.database_path) as connection:
             connection.execute("BEGIN IMMEDIATE")
+            if (
+                require_profile_consent
+                and not has_openai_profile_sharing_consent(connection)
+            ):
+                raise CvGenerationStateError(
+                    "Remote profile transmission is not acknowledged."
+                )
             queued_at = canonical_timestamp(queued_at, "queued time")
             row = connection.execute(
                 """SELECT outcome, profile_sha256, jd_sha256, result_sha256

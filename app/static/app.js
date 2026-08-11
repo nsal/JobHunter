@@ -22,6 +22,13 @@ document.body.addEventListener("close-notes-editor", () => {
   closeDialog("notes-editor-dialog");
 });
 
+document.body.addEventListener("htmx:afterSwap", (event) => {
+  const target = event.detail?.target;
+  if (target?.id === "work-status") {
+    target.setAttribute("aria-busy", "false");
+  }
+});
+
 document.addEventListener("click", (event) => {
   const target = event.target.closest("button");
   if (!target) {

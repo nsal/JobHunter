@@ -1,0 +1,36 @@
+{% if assessment %}
+<section id="assessment-result" class="workflow-panel">
+  <h2>Assessment</h2>
+  <dl class="details assessment-details">
+    <dt>Outcome</dt><dd>{{ assessment.outcome }}</dd>
+    <dt>Score</dt><dd>{{ "%.1f"|format(assessment.final_score) }} / 100</dd>
+    <dt>Mandatory coverage</dt><dd>{{ "%.1f"|format(assessment.mandatory_coverage) }}%</dd>
+    <dt>Supporting alignment</dt><dd>{{ "%.1f"|format(assessment.supporting_alignment) }}%</dd>
+    <dt>Model</dt><dd>{{ assessment.model }}</dd>
+    <dt>Completed</dt><dd>{{ assessment.completed_at }}</dd>
+  </dl>
+  {% if assessment.analysis %}<p class="preserve-lines">{{ assessment.analysis }}</p>{% endif %}
+  {% if assessment.gaps %}
+    <h3>Gaps</h3>
+    <ul>
+      {% for gap in assessment.gaps %}
+        <li>
+          {% if gap is mapping %}
+            {{ gap.requirement_id or gap.requirement or gap.classification or 'Gap' }}{% if gap.rationale %}: {{ gap.rationale }}{% endif %}
+          {% else %}{{ gap }}{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  {% if assessment.failed_hard_gates %}
+    <p class="error">Hard gates: {{ assessment.failed_hard_gates|join(', ') }}</p>
+  {% endif %}
+  {% if assessment.outcome != 'matched' and application.current_stage == 'Mismatch' and not active_work and not generation and not generation_work %}
+    <form method="post" action="/applications/{{ application.id }}/cv-generations">
+      <input type="hidden" name="assessment_id" value="{{ assessment.id }}">
+      <button type="submit">Generate CV anyway</button>
+    </form>
+    <p class="muted">This preserves the mismatch result and queues a separate draft.</p>
+  {% endif %}
+</section>
+{% endif %}
