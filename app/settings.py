@@ -52,6 +52,7 @@ class ProviderSettings(StrictModel):
     name: Literal["openai"] = "openai"
     assessment_model: str = Field(min_length=1, max_length=100)
     cv_model: str = Field(min_length=1, max_length=100)
+    reasoning_effort: Literal["none", "low", "medium", "high", "xhigh", "max"]
     request_timeout_seconds: float = Field(ge=1, le=300)
 
     @field_validator("assessment_model", "cv_model")

@@ -69,5 +69,6 @@ def create_structured_generator(
             settings.provider.assessment_model,
             settings.provider.cv_model,
         },
+        reasoning_effort=settings.provider.reasoning_effort,
         request_timeout_seconds=(settings.provider.request_timeout_seconds),
     )

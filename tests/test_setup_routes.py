@@ -46,7 +46,7 @@ async def test_setup_page_shows_safe_ready_state_and_navigation(
 
     assert response.status_code == 200
     assert "Setup" in response.text
-    assert "gpt-5-mini" in response.text
+    assert "gpt-5.6-sol" in response.text
     assert "Profile" in response.text
     assert "Configured" in response.text
     assert "Acknowledged" in response.text

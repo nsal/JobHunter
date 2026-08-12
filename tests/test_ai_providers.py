@@ -68,6 +68,7 @@ class FakeResponses:
         input: str,
         instructions: str,
         text: Mapping[str, object],
+        reasoning: Mapping[str, str],
         store: bool,
         timeout: float,
     ) -> object:
@@ -77,6 +78,7 @@ class FakeResponses:
                 "input": input,
                 "instructions": instructions,
                 "text": text,
+                "reasoning": reasoning,
                 "store": store,
                 "timeout": timeout,
             }
@@ -146,6 +148,7 @@ def generator(
             client,
             repository,
             allowed_models={"configured-model"},
+            reasoning_effort="high",
             request_timeout_seconds=90,
         ),
         responses,
@@ -178,6 +181,7 @@ def test_openai_native_structured_success_uses_strict_schema(
     assert call["instructions"] == PRIVATE_INSTRUCTIONS
     assert call["timeout"] == 90
     assert call["store"] is False
+    assert call["reasoning"] == {"effort": "high"}
     text = cast(Mapping[str, object], call["text"])
     output_format = cast(Mapping[str, object], text["format"])
     assert output_format["type"] == "json_schema"

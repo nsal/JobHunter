@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 import openai
 from pydantic import BaseModel, ValidationError
@@ -38,6 +38,7 @@ class ResponsesClient(Protocol):
         input: str,
         instructions: str,
         text: Mapping[str, object],
+        reasoning: Mapping[str, str],
         store: bool,
         timeout: float,
     ) -> object:
@@ -73,6 +74,9 @@ class OpenAIStructuredGenerator:
         consent_repository: ConsentRepository,
         *,
         allowed_models: Collection[str] | None = None,
+        reasoning_effort: Literal[
+            "none", "low", "medium", "high", "xhigh", "max"
+        ],
         request_timeout_seconds: float | None = None,
     ) -> None:
         self._client = client
@@ -80,6 +84,7 @@ class OpenAIStructuredGenerator:
         self._allowed_models = (
             frozenset(allowed_models) if allowed_models is not None else None
         )
+        self._reasoning_effort = reasoning_effort
         self._request_timeout_seconds = request_timeout_seconds
 
     def generate[OutputT: BaseModel](
@@ -180,6 +185,7 @@ class OpenAIStructuredGenerator:
                 input=request.input_text,
                 instructions=instructions,
                 text=response_format,
+                reasoning={"effort": self._reasoning_effort},
                 store=False,
                 timeout=request.timeout_seconds,
             )
