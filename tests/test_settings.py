@@ -116,6 +116,13 @@ def test_tracked_settings_load_defaults_and_typed_overrides(
     assert overridden.scoring.threshold == 82.5
 
 
+def test_checked_in_settings_allow_slow_structured_generation() -> None:
+    """Keep the production request window suitable for high reasoning."""
+    settings = load_ai_settings()
+
+    assert settings.provider.request_timeout_seconds == 300
+
+
 @pytest.mark.parametrize(
     ("change", "message"),
     [
