@@ -1,7 +1,8 @@
 provider:
   name: openai
-  assessment_model: gpt-5-mini
-  cv_model: gpt-5-mini
+  assessment_model: gpt-5.6-sol
+  cv_model: gpt-5.6-sol
+  reasoning_effort: high
   request_timeout_seconds: 90
 scoring:
   threshold: 75

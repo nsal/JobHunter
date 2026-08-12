@@ -25,6 +25,7 @@ def ai_values(**overrides: Any) -> dict[str, Any]:
             "name": "openai",
             "assessment_model": "assessment-model",
             "cv_model": "cv-model",
+            "reasoning_effort": "high",
             "request_timeout_seconds": 90,
         },
         "scoring": {"threshold": 75, "taxonomy_version": "v1"},
@@ -136,6 +137,10 @@ def test_tracked_settings_load_defaults_and_typed_overrides(
                 }
             },
             "work lease",
+        ),
+        (
+            {"provider": {"reasoning_effort": "urgent"}},
+            "AI settings are invalid",
         ),
         ({"queue": {"concurrency": 4}}, "AI settings are invalid"),
     ],
