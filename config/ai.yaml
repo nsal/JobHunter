@@ -1,0 +1,15 @@
+provider:
+  name: openai
+  assessment_model: gpt-5-mini
+  cv_model: gpt-5-mini
+  request_timeout_seconds: 90
+scoring:
+  threshold: 75
+  taxonomy_version: v1
+queue:
+  poll_interval_seconds: 1
+  heartbeat_interval_seconds: 10
+  work_lease_seconds: 45
+  resource_lease_seconds: 180
+  concurrency: 3
+  max_attempts: 2

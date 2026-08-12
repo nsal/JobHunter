@@ -16,7 +16,6 @@
       <col class="application-company-column">
       <col class="application-payment-column">
       <col class="application-url-column">
-      <col class="application-cv-column">
       <col class="application-agency-column">
       <col class="application-remote-column">
       <col class="application-stage-column">
@@ -30,7 +29,6 @@
         <th>Company</th>
         <th><abbr title="Payment">Pay</abbr></th>
         <th><abbr title="Job post URL">URL</abbr></th>
-        <th>CV</th>
         <th><abbr title="Agency flag">Agency</abbr></th>
         <th><abbr title="Fully remote">Remote</abbr></th>
         <th><abbr title="Current stage and stage note">Stage</abbr></th>
@@ -39,7 +37,7 @@
         <th><abbr title="Last updated">Updated</abbr></th>
       </tr>
     </thead>
-    <tbody id="applications">{% for application in applications %}{% include 'applications/_application_row.html' %}{% else %}<tr><td colspan="11">{% if q %}No applications match “{{ q }}”.{% else %}No applications yet.{% endif %}</td></tr>{% endfor %}</tbody>
+    <tbody id="applications">{% for application in applications %}{% include 'applications/_application_row.html' %}{% else %}<tr><td colspan="10">{% if q %}No applications match “{{ q }}”.{% else %}No applications yet.{% endif %}</td></tr>{% endfor %}</tbody>
   </table>
 </div>
 {% endblock %}

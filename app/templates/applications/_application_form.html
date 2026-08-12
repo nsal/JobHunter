@@ -2,10 +2,16 @@
   <header class="dialog-heading">
     <h1>{{ submit_label }}</h1>
   </header>
+  <p class="muted">The full job description is saved immutably and assessed in the background.</p>
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  {% if setup_error %}
+  <p class="error" role="alert">
+    {{ setup_error }} <a href="/setup">Open setup</a>
+  </p>
+  {% endif %}
   <form method="post" action="{{ action }}" hx-post="{{ action }}"
-        hx-target="#application-form" hx-swap="outerHTML" class="application-form"
-        enctype="multipart/form-data" hx-encoding="multipart/form-data">
+        hx-target="#application-form" hx-swap="outerHTML"
+        class="application-form">
     <div class="form-grid">
     <label>
       Role
@@ -23,24 +29,6 @@
       Job URL
       <input name="job_url" value="{{ application.job_url or '' }}">
     </label>
-    <div class="cv-control">
-      <input type="hidden" name="cv_path" value="{{ application.cv_path or '' }}">
-      <span id="application-cv-label">CV</span>
-      <label class="button file-picker-button">
-        <span>Choose CV</span>
-        <input id="application-cv-upload" class="file-picker-input"
-               type="file" name="cv_upload" accept=".pdf,.doc,.docx"
-               aria-describedby="application-cv-status application-cv-guidance"
-               data-cv-upload>
-      </label>
-      <span id="application-cv-status" class="file-upload-status"
-            data-cv-status role="status">
-        No file selected
-      </span>
-      <span id="application-cv-guidance" class="file-upload-guidance">
-        PDF, DOC, or DOCX up to 10 MiB
-      </span>
-    </div>
     <label class="checkbox-label">
       <input type="checkbox" name="is_recruiter"
              {% if application.is_recruiter %}checked{% endif %}>
@@ -57,7 +45,7 @@
     </label>
     <label class="wide-field">
       Full job description
-      <textarea name="full_jd">{{ application.full_jd or '' }}</textarea>
+      <textarea name="full_jd" required>{{ application.full_jd or '' }}</textarea>
     </label>
     </div>
     <div class="form-actions">

@@ -14,19 +14,6 @@
          rel="noopener noreferrer">URL</a>
     {% else %}<span class="table-cell-content">—</span>{% endif %}
   </td>
-  <td data-label="CV">
-    {% if application.cv_path %}
-      {% if (application.cv_path|lower).endswith('.pdf') %}
-        <span class="table-cell-content"><button type="button"
-              class="cv-preview-button"
-              data-preview-url="/applications/{{ application.id }}/cv/preview">
-          Preview CV
-        </button></span>
-      {% else %}
-        <a class="table-cell-content" href="/applications/{{ application.id }}/cv/download">Download CV</a>
-      {% endif %}
-    {% else %}<span class="table-cell-content">—</span>{% endif %}
-  </td>
   <td data-label="Agency"><span class="table-cell-content">{{ 'Yes' if application.is_recruiter else 'No' }}</span></td>
   <td data-label="Fully remote"><span class="table-cell-content">{{ 'Yes' if application.is_fully_remote else 'No' }}</span></td>
   <td data-label="Stage"
@@ -34,7 +21,13 @@
     <button class="table-edit table-cell-content" type="button" data-open-stage-editor
             data-stage-editor-url="/applications/{{ application.id }}/stage-editor">
       {{ application.current_stage }}<br>{{ application.current_stage_description or '—' }}
+      {% if application.active_work %}<br><small>{{ 'Assessment' if application.active_work.work_type.value == 'assessment' else 'CV generation' }}: {{ application.active_work.state.value }}</small>{% elif application.latest_work and application.latest_work.state.value == 'failed' %}<br><small>{{ 'Assessment' if application.latest_work.work_type.value == 'assessment' else 'CV generation' }}: failed</small>{% elif application.assessment %}<br><small>Assessment: {{ application.assessment.outcome }}</small>{% endif %}
     </button>
+    {% if application.artefacts_available %}
+      <form method="post" action="/applications/{{ application.id }}/artefacts/open">
+        <button class="table-edit artefacts-link" type="submit">Open artefacts</button>
+      </form>
+    {% endif %}
   </td>
   <td class="application-notes-cell" data-label="Notes"
       title="{{ application.notes or 'Not supplied' }}">

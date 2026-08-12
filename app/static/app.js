@@ -12,16 +12,7 @@ function closeDialog(dialogId) {
   if (dialog?.open) {
     dialog.close();
   }
-  if (dialogId === "cv-preview-dialog") {
-    document.getElementById("cv-preview-frame").src = "";
-  }
 }
-
-document
-  .getElementById("cv-preview-dialog")
-  ?.addEventListener("close", () => {
-    document.getElementById("cv-preview-frame").src = "";
-  });
 
 document.body.addEventListener("close-stage-editor", () => {
   closeDialog("stage-editor-dialog");
@@ -31,14 +22,10 @@ document.body.addEventListener("close-notes-editor", () => {
   closeDialog("notes-editor-dialog");
 });
 
-document.addEventListener("change", (event) => {
-  const input = event.target;
-  if (!(input instanceof HTMLInputElement) || input.dataset.cvUpload === undefined) {
-    return;
-  }
-  const status = input.closest(".cv-control")?.querySelector("[data-cv-status]");
-  if (status) {
-    status.textContent = input.files?.[0]?.name || "No file selected";
+document.body.addEventListener("htmx:afterSwap", (event) => {
+  const target = event.detail?.target;
+  if (target?.id === "work-status") {
+    target.setAttribute("aria-busy", "false");
   }
 });
 
@@ -74,9 +61,5 @@ document.addEventListener("click", (event) => {
       "#notes-editor-content",
     );
     return;
-  }
-  if (target.dataset.previewUrl) {
-    document.getElementById("cv-preview-frame").src = target.dataset.previewUrl;
-    openDialog("cv-preview-dialog");
   }
 });

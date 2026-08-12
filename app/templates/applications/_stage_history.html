@@ -11,7 +11,7 @@
         <option value="" disabled {% if not stage_values or not stage_values.stage %}selected{% endif %}>
           Select a new stage
         </option>
-        {% for stage in stages if stage != 'Submitted' %}
+        {% for stage in stages %}
           <option value="{{ stage }}" {% if stage_values and stage_values.stage == stage %}selected{% endif %}>
             {{ stage }}
           </option>

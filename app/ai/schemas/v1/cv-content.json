@@ -1,0 +1,230 @@
+{
+  "$defs": {
+    "CitedValue": {
+      "additionalProperties": false,
+      "description": "An identity/contact value grounded in the private profile.",
+      "properties": {
+        "profile_block_ids": {
+          "items": {
+            "pattern": "^profile-[0-9]{4}$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Profile Block Ids",
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "profile_block_ids"
+      ],
+      "title": "CitedValue",
+      "type": "object"
+    },
+    "CvClaim": {
+      "additionalProperties": false,
+      "description": "One renderable CV claim with profile and relevance citations.",
+      "properties": {
+        "claim_id": {
+          "pattern": "^claim-[0-9]{3}$",
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "profile_block_ids": {
+          "items": {
+            "pattern": "^profile-[0-9]{4}$",
+            "type": "string"
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "title": "Profile Block Ids",
+          "type": "array"
+        },
+        "requirement_ids": {
+          "items": {
+            "pattern": "^req-[0-9]{3}$",
+            "type": "string"
+          },
+          "maxItems": 12,
+          "title": "Requirement Ids",
+          "type": "array"
+        },
+        "text": {
+          "maxLength": 600,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "claim_id",
+        "text",
+        "profile_block_ids",
+        "requirement_ids"
+      ],
+      "title": "CvClaim",
+      "type": "object"
+    },
+    "CvIdentity": {
+      "additionalProperties": false,
+      "description": "Bounded cited identity and optional contact details.",
+      "properties": {
+        "email": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitedValue"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "full_name": {
+          "$ref": "#/$defs/CitedValue"
+        },
+        "location": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitedValue"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "phone": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitedValue"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "professional_title": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitedValue"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "website": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitedValue"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "full_name",
+        "professional_title",
+        "email",
+        "phone",
+        "location",
+        "website"
+      ],
+      "title": "CvIdentity",
+      "type": "object"
+    },
+    "CvSection": {
+      "additionalProperties": false,
+      "description": "One ordered, typed CV section.",
+      "properties": {
+        "claims": {
+          "items": {
+            "$ref": "#/$defs/CvClaim"
+          },
+          "maxItems": 30,
+          "minItems": 1,
+          "title": "Claims",
+          "type": "array"
+        },
+        "heading": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Heading",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/CvSectionKind"
+        },
+        "section_id": {
+          "pattern": "^section-[0-9]{2}$",
+          "title": "Section Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "section_id",
+        "kind",
+        "heading",
+        "claims"
+      ],
+      "title": "CvSection",
+      "type": "object"
+    },
+    "CvSectionKind": {
+      "description": "Allowed one-page CV section types.",
+      "enum": [
+        "summary",
+        "skills",
+        "experience",
+        "education",
+        "certifications",
+        "projects",
+        "additional"
+      ],
+      "title": "CvSectionKind",
+      "type": "string"
+    },
+    "SchemaVersion": {
+      "description": "Published structured-output schema versions.",
+      "enum": [
+        "v1"
+      ],
+      "title": "SchemaVersion",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Complete evidence-grounded content for deterministic DOCX rendering.",
+  "properties": {
+    "identity": {
+      "$ref": "#/$defs/CvIdentity"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SchemaVersion"
+    },
+    "sections": {
+      "items": {
+        "$ref": "#/$defs/CvSection"
+      },
+      "maxItems": 12,
+      "minItems": 1,
+      "title": "Sections",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "identity",
+    "sections"
+  ],
+  "title": "CvContent",
+  "type": "object"
+}

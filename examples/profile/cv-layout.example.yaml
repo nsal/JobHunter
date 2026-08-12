@@ -1,0 +1,31 @@
+page:
+  size: A4
+  orientation: portrait
+  margins:
+    top: 0.5
+    right: 0.55
+    bottom: 0.5
+    left: 0.55
+fonts:
+  body: Aptos
+  headings: Aptos Display
+  body_size_pt: 9.5
+  heading_size_pt: 12
+spacing:
+  line: 1.0
+  paragraph_after_pt: 3
+  section_after_pt: 6
+styles:
+  heading_color: "1F2937"
+  accent_color: "2563EB"
+  bullet_indent_inches: 0.2
+output:
+  filename: Tailored CV.docx
+section_order:
+  - summary
+  - skills
+  - experience
+  - projects
+  - education
+  - certifications
+  - additional

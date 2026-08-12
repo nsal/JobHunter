@@ -1,10 +1,11 @@
 <details id="application-edit-form">
   <summary>Edit application</summary>
+  <p class="muted">The saved job description is immutable; role, company, and notes remain editable.</p>
   {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
   <form method="post" action="{{ action or '/applications/' ~ application.id }}"
         hx-post="{{ action or '/applications/' ~ application.id }}"
-        hx-target="#application-edit-form" hx-swap="outerHTML" class="application-form"
-        enctype="multipart/form-data" hx-encoding="multipart/form-data">
+        hx-target="#application-edit-form" hx-swap="outerHTML"
+        class="application-form">
     <div class="form-grid">
     <label>
       Role
@@ -22,14 +23,6 @@
       Job URL
       <input name="job_url" value="{{ application.job_url or '' }}">
     </label>
-    <div class="cv-control">
-      <input type="hidden" name="cv_path" value="{{ application.cv_path or '' }}">
-      <label>
-        Replace CV
-        <input type="file" name="cv_upload" accept=".pdf,.doc,.docx">
-      </label>
-      <span class="path-summary">{% if application.cv_path %}Current: {{ application.cv_path.rsplit('/', 1)[-1] }}{% else %}No CV selected{% endif %}</span>
-    </div>
     <label class="checkbox-label">
       <input type="checkbox" name="is_recruiter"
              {% if application.is_recruiter %}checked{% endif %}>
@@ -43,10 +36,6 @@
     <label class="wide-field">
       Notes
       <textarea name="notes">{{ application.notes or '' }}</textarea>
-    </label>
-    <label class="wide-field">
-      Full job description
-      <textarea name="full_jd">{{ application.full_jd or '' }}</textarea>
     </label>
     </div>
     <button type="submit">Save changes</button>

@@ -7,11 +7,10 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import (
-    FileResponse,
     HTMLResponse,
     RedirectResponse,
     Response,
@@ -20,13 +19,27 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.types import Scope
 
-from app.cv_files import (
-    CvFileError,
-    cv_path,
+from app.assessment.service import (
+    AssessmentInputError,
+    build_assessment_input,
 )
-from app.cv_uploads import remove_cv_upload, store_cv_upload
+from app.consent import ConsentRequiredError
 from app.database import STAGES, initialize_database
 from app.repository import ApplicationNotFoundError, Repository
+from app.routes import add_workflow_to_applications, application_workflow
+from app.routes.artefacts import router as artefacts_router
+from app.routes.assessments import router as assessments_router
+from app.routes.cv_generations import router as cv_generations_router
+from app.routes.setup import (
+    SetupIncompleteError,
+    _require_same_origin,
+    inspect_setup,
+    normalize_configured_origin,
+    normalize_http_origin,
+    require_setup_ready,
+    router,
+)
+from app.settings import SettingsError, validate_profile_input
 
 ROOT = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(ROOT / "app" / "templates"))
@@ -63,12 +76,32 @@ def now_value() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S")
 
 
+def run_server(
+    database_path: str | Path,
+    project_root: str | Path = ROOT,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+) -> None:
+    """Run one FastAPI/Uvicorn process for the launcher."""
+    import uvicorn
+
+    uvicorn.run(
+        create_app(
+            database_path,
+            project_root=project_root,
+            trusted_origin=normalize_http_origin(host, port),
+        ),
+        host=host,
+        port=port,
+        log_level="info",
+    )
+
+
 def form_values(
     role: str,
     company: str,
     payment: str | None,
     job_url: str | None,
-    cv_path: str | None,
     is_recruiter: str | None,
     is_fully_remote: str | None,
     notes: str | None,
@@ -80,7 +113,6 @@ def form_values(
         "company": company,
         "payment": payment,
         "job_url": job_url,
-        "cv_path": cv_path,
         "is_recruiter": is_recruiter,
         "is_fully_remote": is_fully_remote,
         "notes": notes,
@@ -88,20 +120,34 @@ def form_values(
     }
 
 
-def create_app(database_path: str | Path | None = None) -> FastAPI:
+def create_app(
+    database_path: str | Path | None = None,
+    project_root: str | Path | None = None,
+    trusted_origin: str = "http://testserver",
+) -> FastAPI:
     """Build an application instance, optionally using a supplied database."""
     configured_path = os.getenv("JOBHUNTER_DATABASE")
     path = Path(
         database_path or configured_path or ROOT / "private" / "jobhunter.db"
     )
+    root = Path(project_root or ROOT).resolve()
+    normalized_origin = normalize_configured_origin(trusted_origin)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         initialize_database(path)
         app.state.repository = Repository(path)
+        app.state.database_path = path
+        app.state.project_root = root
+        app.state.now_value = now_value
+        app.state.trusted_origin = normalized_origin
         yield
 
     app = FastAPI(title="JobHunter", lifespan=lifespan)
+    app.include_router(router)
+    app.include_router(assessments_router)
+    app.include_router(cv_generations_router)
+    app.include_router(artefacts_router)
     static_directory = ROOT / "app" / "static"
     app.mount(
         "/static",
@@ -116,7 +162,17 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def application_list(request: Request, q: str = "") -> HTMLResponse:
         search = q.strip()
-        applications = request.app.state.repository.list_applications(search)
+        repository = request.app.state.repository
+        applications = repository.list_applications(search)
+        for application in applications:
+            repository.promote_completed_generation(int(application["id"]))
+        if applications:
+            applications = repository.list_applications(search)
+        add_workflow_to_applications(
+            applications,
+            request.app.state.database_path,
+            request.app.state.project_root,
+        )
         return templates.TemplateResponse(
             request,
             "applications/index.html",
@@ -125,11 +181,16 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
 
     @app.get("/applications/new", response_class=HTMLResponse)
     def new_application(request: Request) -> HTMLResponse:
+        setup_error = inspect_setup(
+            request.app.state.project_root,
+            request.app.state.database_path,
+        ).blocking_message
         context = {
             "application": {},
             "action": "/applications",
             "submit_label": "Create application",
             "is_dialog": bool(request.headers.get("HX-Request")),
+            "setup_error": setup_error,
         }
         if request.headers.get("HX-Request"):
             return templates.TemplateResponse(
@@ -142,14 +203,12 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         )
 
     @app.post("/applications", response_class=HTMLResponse)
-    async def create_application(
+    def create_application(
         request: Request,
         role: str = Form(""),
         company: str = Form(""),
         payment: str | None = Form(None),
         job_url: str | None = Form(None),
-        cv_path: str | None = Form(None),
-        cv_upload: Annotated[UploadFile | None, File()] = None,
         is_recruiter: str | None = Form(None),
         is_fully_remote: str | None = Form(None),
         notes: str | None = Form(None),
@@ -160,30 +219,53 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
             company,
             payment,
             job_url,
-            cv_path,
             is_recruiter,
             is_fully_remote,
             notes,
             full_jd,
         )
-        uploaded_location: str | None = None
         try:
-            if cv_upload is not None:
-                uploaded_location = await store_cv_upload(
-                    cv_upload, company, role
+            _require_same_origin(request)
+            require_setup_ready(request)
+            if not (values["full_jd"] or "").strip():
+                raise ValueError("Full job description is required.")
+            try:
+                profile_path = validate_profile_input(
+                    request.app.state.project_root
                 )
-                if uploaded_location:
-                    values["cv_path"] = uploaded_location
+                build_assessment_input(
+                    profile_path.read_bytes(), values["full_jd"] or ""
+                )
+            except AssessmentInputError:
+                raise
+            except (OSError, SettingsError) as error:
+                raise AssessmentInputError(
+                    "Assessment input is invalid."
+                ) from error
             application_id = request.app.state.repository.create_application(
-                values, now_value()
+                values,
+                now_value(),
+                require_profile_consent=True,
             )
-        except (CvFileError, ValueError) as error:
-            remove_cv_upload(uploaded_location)
+        except (
+            ConsentRequiredError,
+            SetupIncompleteError,
+            ValueError,
+        ) as error:
             context = {
                 "application": values,
                 "action": "/applications",
                 "submit_label": "Create application",
-                "error": str(error),
+                "error": ""
+                if isinstance(error, SetupIncompleteError)
+                else str(error),
+                "setup_error": (
+                    str(error)
+                    if isinstance(
+                        error, (ConsentRequiredError, SetupIncompleteError)
+                    )
+                    else ""
+                ),
                 "is_dialog": bool(request.headers.get("HX-Request")),
             }
             if request.headers.get("HX-Request"):
@@ -209,104 +291,60 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         application_id: int, request: Request
     ) -> HTMLResponse:
         try:
+            request.app.state.repository.promote_completed_generation(
+                application_id
+            )
             application = request.app.state.repository.get_application(
                 application_id
             )
         except ApplicationNotFoundError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
+        workflow = application_workflow(
+            request.app.state.database_path,
+            request.app.state.project_root,
+            application,
+        )
+        application.update(workflow)
         return templates.TemplateResponse(
             request,
             "applications/detail.html",
-            {"application": application, "stages": STAGES, "now": now_value()},
+            {
+                "application": application,
+                **workflow,
+                "stages": STAGES,
+                "now": now_value(),
+            },
         )
-
-    def application_cv(application_id: int, request: Request) -> Path:
-        try:
-            application = request.app.state.repository.get_application(
-                application_id
-            )
-        except ApplicationNotFoundError as error:
-            raise HTTPException(status_code=404, detail=str(error)) from error
-        location = application.get("cv_path")
-        if not isinstance(location, str):
-            raise HTTPException(status_code=404, detail="CV file not found.")
-        try:
-            return cv_path(location)
-        except CvFileError as error:
-            raise HTTPException(
-                status_code=404, detail="CV file not found."
-            ) from error
-
-    @app.get("/applications/{application_id}/cv/preview")
-    def preview_cv(application_id: int, request: Request) -> FileResponse:
-        path = application_cv(application_id, request)
-        if path.suffix.lower() != ".pdf":
-            raise HTTPException(
-                status_code=422, detail="Only PDFs can be previewed."
-            )
-        return FileResponse(
-            path,
-            media_type="application/pdf",
-            filename=path.name,
-            content_disposition_type="inline",
-        )
-
-    @app.get("/applications/{application_id}/cv/download")
-    def download_cv(application_id: int, request: Request) -> FileResponse:
-        path = application_cv(application_id, request)
-        media_type = (
-            "application/msword"
-            if path.suffix.lower() == ".doc"
-            else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
-        return FileResponse(path, media_type=media_type, filename=path.name)
 
     @app.post("/applications/{application_id}", response_class=HTMLResponse)
-    async def update_application(
+    def update_application(
         application_id: int,
         request: Request,
         role: str = Form(""),
         company: str = Form(""),
         payment: str | None = Form(None),
         job_url: str | None = Form(None),
-        cv_path: str | None = Form(None),
-        cv_upload: Annotated[UploadFile | None, File()] = None,
         is_recruiter: str | None = Form(None),
         is_fully_remote: str | None = Form(None),
         notes: str | None = Form(None),
-        full_jd: str | None = Form(None),
     ) -> Response:
         values = form_values(
             role,
             company,
             payment,
             job_url,
-            cv_path,
             is_recruiter,
             is_fully_remote,
             notes,
-            full_jd,
+            None,
         )
-        uploaded_location: str | None = None
         try:
-            existing = request.app.state.repository.get_application(
-                application_id
-            )
-            if cv_upload is not None:
-                uploaded_location = await store_cv_upload(
-                    cv_upload, company, role
-                )
-                if uploaded_location:
-                    values["cv_path"] = uploaded_location
-            if not values["cv_path"]:
-                values["cv_path"] = existing.get("cv_path")
             request.app.state.repository.update_application(
                 application_id, values
             )
         except ApplicationNotFoundError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
-        except (CvFileError, ValueError) as error:
-            remove_cv_upload(uploaded_location)
+        except ValueError as error:
             values["id"] = application_id
             context = {
                 "application": values,
@@ -448,6 +486,13 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
                 status_code=422,
             )
         if request.headers.get("HX-Request"):
+            application.update(
+                application_workflow(
+                    request.app.state.database_path,
+                    request.app.state.project_root,
+                    application,
+                )
+            )
             return templates.TemplateResponse(
                 request,
                 "applications/_application_row.html",
@@ -490,6 +535,13 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         except ApplicationNotFoundError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
         if request.headers.get("HX-Request"):
+            application.update(
+                application_workflow(
+                    request.app.state.database_path,
+                    request.app.state.project_root,
+                    application,
+                )
+            )
             return templates.TemplateResponse(
                 request,
                 "applications/_application_row.html",
@@ -501,4 +553,6 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     return app
 
 
-app = create_app()
+app = create_app(
+    trusted_origin=normalize_http_origin("127.0.0.1", 8000),
+)
