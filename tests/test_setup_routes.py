@@ -53,6 +53,28 @@ async def test_setup_page_shows_safe_ready_state_and_navigation(
     assert 'href="/setup"' in (await client.get("/")).text
 
 
+async def test_unsupported_taxonomy_is_incomplete_and_blocks_creation(
+    client: httpx2.AsyncClient,
+    database_path: str,
+) -> None:
+    config = Path(database_path).parent / "config" / "ai.yaml"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(
+            "taxonomy_version: v1", "taxonomy_version: v2"
+        ),
+        encoding="utf-8",
+    )
+
+    setup = await client.get("/setup")
+    create = await client.post("/applications", data=APPLICATION_DATA)
+
+    assert setup.status_code == 200
+    assert "Tracked AI settings are missing or invalid." in setup.text
+    assert "v2" not in setup.text
+    assert create.status_code == 422
+    assert "Complete the required setup" in create.text
+
+
 async def test_acknowledgement_and_revocation_are_idempotent(
     client: httpx2.AsyncClient,
 ) -> None:

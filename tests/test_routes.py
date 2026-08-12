@@ -4,6 +4,7 @@ from pathlib import Path
 import httpx2
 import pytest
 
+from app.database import connect
 from app.repository import Repository
 
 pytestmark = pytest.mark.anyio
@@ -50,6 +51,36 @@ async def test_create_starts_assessing_with_nullable_submission(
     assert "<dt>Submitted</dt><dd>—</dd>" in detail.text
     assert "Assessing" in dashboard.text
     assert 'class="date-cell" data-label="Submitted"' in dashboard.text
+
+
+async def test_create_rejects_oversized_assessment_input_before_persistence(
+    client: httpx2.AsyncClient,
+    database_path: str,
+) -> None:
+    response = await client.post(
+        "/applications",
+        data={**APPLICATION_DATA, "full_jd": "x" * 500_000},
+    )
+
+    assert response.status_code == 422
+    assert "Assessment input is too large." in response.text
+    with connect(database_path) as connection:
+        assert (
+            connection.execute("SELECT COUNT(*) FROM applications").fetchone()[
+                0
+            ]
+            == 0
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM application_stage_history"
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            connection.execute("SELECT COUNT(*) FROM work_items").fetchone()[0]
+            == 0
+        )
 
 
 async def test_create_rejects_forged_origin(

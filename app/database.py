@@ -199,7 +199,8 @@ def initialize_database(database_path: str | Path) -> None:
             );
 
             CREATE TABLE IF NOT EXISTS work_items (
-                id TEXT PRIMARY KEY CHECK (TRIM(id) != ''),
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                id TEXT NOT NULL UNIQUE CHECK (TRIM(id) != ''),
                 application_id INTEGER NOT NULL REFERENCES applications(id),
                 work_type TEXT NOT NULL CHECK (
                     work_type IN ('assessment', 'cv_generation')

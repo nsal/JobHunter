@@ -38,7 +38,45 @@ def test_schema_contains_fresh_lifecycle_tables(database_path: str) -> None:
     assert "artefact_directory" in columns
     assert "cv_path" not in columns
     assert "role_sha256" in work_columns
+    assert "sequence" in work_columns
     assert "submission_history" not in names
+
+
+def test_work_sequence_is_generated_unique_and_stable(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+
+    with connect(database_path) as connection:
+        connection.execute(
+            "INSERT INTO applications(role, company, full_jd, created_at, "
+            "artefact_directory) VALUES ('Dev', 'Acme', 'JD', '2026-01-01', "
+            "'Acme/dev')"
+        )
+        connection.execute(
+            "INSERT INTO work_items(id, application_id, work_type, state, "
+            "available_at, current_step, queued_at) VALUES "
+            "('first', 1, 'assessment', 'queued', '2026-01-01', "
+            "'assessment', '2026-01-01')"
+        )
+        first = connection.execute(
+            "SELECT sequence FROM work_items WHERE id = 'first'"
+        ).fetchone()[0]
+        connection.execute(
+            "UPDATE work_items SET state = 'failed', error_code = 'timeout' "
+            "WHERE id = 'first'"
+        )
+        connection.execute(
+            "INSERT INTO work_items(id, application_id, work_type, state, "
+            "available_at, current_step, queued_at) VALUES "
+            "('second', 1, 'assessment', 'queued', '2026-01-01', "
+            "'assessment', '2026-01-01')"
+        )
+        second = connection.execute(
+            "SELECT sequence FROM work_items WHERE id = 'second'"
+        ).fetchone()[0]
+
+    assert second > first
 
 
 def test_work_schema_validates_nullable_role_checkpoint_hash(

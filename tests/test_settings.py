@@ -151,6 +151,23 @@ def test_tracked_settings_reject_unknown_provider_and_invalid_relationships(
 
 
 @pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"scoring": {"taxonomy_version": "v2"}}, "unsupported"),
+        ({"queue": {"max_attempts": 1}}, "AI settings are invalid"),
+    ],
+)
+def test_tracked_settings_reject_unsupported_v1_contracts(
+    tmp_path: Path, change: dict[str, object], message: str
+) -> None:
+    config = tmp_path / "ai.yaml"
+    write_yaml(config, ai_values())
+
+    with pytest.raises(SettingsError, match=message):
+        load_ai_settings(config, change)
+
+
+@pytest.mark.parametrize(
     "secret_key",
     ["api_key", "OPENAI-API-KEY", "access_token", "client_secret"],
 )

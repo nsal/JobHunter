@@ -187,6 +187,7 @@ class WorkCheckpoint:
 class WorkItem:
     """A safe, allowlisted view of one work item."""
 
+    sequence: int
     id: str
     application_id: int
     work_type: WorkType

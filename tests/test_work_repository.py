@@ -479,6 +479,33 @@ def test_transient_failure_retries_once_then_fails(
     assert failed.failure_token == "worker-b"
 
 
+def test_equal_queue_timestamps_use_insertion_sequence(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+    application_id = create_application(database_path)
+    repository = WorkRepository(database_path)
+    first_id = repository.enqueue(
+        application_id, WorkType.ASSESSMENT, "2026-01-01T00:00:00Z"
+    )
+    with connect(database_path) as connection:
+        connection.execute(
+            "UPDATE work_items SET state = 'failed', error_code = 'timeout' "
+            "WHERE id = ?",
+            (first_id,),
+        )
+    second_id = repository.enqueue(
+        application_id, WorkType.ASSESSMENT, "2026-01-01T00:00:00Z"
+    )
+
+    items = repository.list_for_application(application_id)
+
+    assert [item.id for item in items[:2]] == [second_id, first_id]
+    first_sequence = repository.get(first_id).sequence
+    second_sequence = repository.get(second_id).sequence
+    assert second_sequence > first_sequence
+
+
 def test_failure_replay_is_exactly_owner_qualified(
     database_path: str,
 ) -> None:

@@ -10,6 +10,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from app.ai.providers.base import (
+    MAX_INPUT_LENGTH,
     StructuredGenerationRequest,
     StructuredGenerator,
 )
@@ -19,7 +20,12 @@ from app.ai.schema_models import (
     SchemaVersion,
     validate_assessment_references,
 )
-from app.ai.source_blocks import SourceBlock, SourceKind, parse_source_blocks
+from app.ai.source_blocks import (
+    SourceBlock,
+    SourceBlockError,
+    SourceKind,
+    parse_source_blocks,
+)
 from app.artefacts import ArtefactStore, sha256_bytes
 from app.assessment.scoring import AssessmentScore, score_assessment
 from app.assessment.taxonomy import get_taxonomy
@@ -43,6 +49,19 @@ class AssessmentInputChangedError(RuntimeError):
 
     def __init__(self) -> None:
         super().__init__("Assessment inputs changed during execution.")
+
+
+class AssessmentInputError(ValueError):
+    """Raised when assessment sources cannot fit the provider contract."""
+
+
+@dataclass(frozen=True)
+class AssessmentInput:
+    """Canonical, bounded input shared by queue preflight and workers."""
+
+    profile_blocks: tuple[SourceBlock, ...]
+    jd_blocks: tuple[SourceBlock, ...]
+    input_text: str
 
 
 @dataclass(frozen=True)
@@ -96,6 +115,23 @@ def _request_input(
         separators=(",", ":"),
         sort_keys=True,
     )
+
+
+def build_assessment_input(
+    profile: str | bytes, job_description: str
+) -> AssessmentInput:
+    """Parse and serialize assessment sources within the provider limit."""
+    try:
+        profile_blocks = parse_source_blocks(profile, SourceKind.PROFILE)
+        jd_blocks = parse_source_blocks(
+            job_description, SourceKind.JOB_DESCRIPTION
+        )
+        input_text = _request_input(profile_blocks, jd_blocks)
+    except SourceBlockError as error:
+        raise AssessmentInputError("Assessment input is invalid.") from error
+    if not input_text or len(input_text) > MAX_INPUT_LENGTH:
+        raise AssessmentInputError("Assessment input is too large.")
+    return AssessmentInput(profile_blocks, jd_blocks, input_text)
 
 
 def _gap_document(result: AssessmentResult) -> list[dict[str, object]]:
@@ -174,9 +210,8 @@ class AssessmentService:
         ):
             raise AssessmentInputChangedError
 
-        profile_blocks = parse_source_blocks(profile_bytes, SourceKind.PROFILE)
-        jd_blocks = parse_source_blocks(
-            application.full_jd, SourceKind.JOB_DESCRIPTION
+        assessment_input = build_assessment_input(
+            profile_bytes, application.full_jd
         )
         instructions = self._instructions_path.read_text(encoding="utf-8")
         taxonomy = get_taxonomy(self._settings.scoring.taxonomy_version)
@@ -185,7 +220,7 @@ class AssessmentService:
             schema_name="assessment_result_v1",
             schema=AssessmentResult,
             instructions=instructions,
-            input_text=_request_input(profile_blocks, jd_blocks),
+            input_text=assessment_input.input_text,
             timeout_seconds=self._settings.provider.request_timeout_seconds,
             contains_profile=True,
         )
@@ -210,8 +245,8 @@ class AssessmentService:
                 resume_checkpoint,
                 application.artefact_directory,
                 checkpoint_hashes,
-                jd_blocks,
-                profile_blocks,
+                assessment_input.jd_blocks,
+                assessment_input.profile_blocks,
             )
             if loaded is not None:
                 result, provenance = loaded
@@ -225,7 +260,11 @@ class AssessmentService:
         if result is None:
             generated = self._generator.generate(request)
             result = generated.value
-            validate_assessment_references(result, jd_blocks, profile_blocks)
+            validate_assessment_references(
+                result,
+                assessment_input.jd_blocks,
+                assessment_input.profile_blocks,
+            )
             generated_model = generated.model
             generated_provider = generated.metadata.provider
             generated_response_ids = generated.response_ids

@@ -1063,6 +1063,22 @@ tests scripts`, `uv run python scripts/generate_ai_schemas.py --check`,
 changes were needed; the fixes are covered by the application and regression
 tests.
 
+### Task 12 Fix 3: Harden workflow preconditions
+
+- [x] Reject unsupported taxonomy versions and attempt limits during settings
+  loading and setup readiness.
+- [x] Preflight the exact serialized assessment payload before creating an
+  application, while reusing the same bounded builder in the worker.
+- [x] Use a generated SQLite work sequence to make equal-timestamp workflow
+  history deterministic without changing opaque work IDs.
+
+Task 12 Fix 3 verification for [issue #53](https://github.com/nsal/JobHunter/issues/53):
+focused settings, setup, assessment, route, database, and work tests passed;
+the complete suite passed 498 tests. `uv run ruff check .`, `uv run ruff
+format --check .`, `uv run mypy app tests scripts`, `uv run python
+scripts/generate_ai_schemas.py --check`, `uv lock --check`, and `git diff
+--check` also passed. No dependency or lockfile change was introduced.
+
 ## Post-Completion
 
 *These items require private inputs, credentials, or external repository

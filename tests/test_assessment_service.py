@@ -32,9 +32,11 @@ from app.assessment.scoring import AssessmentOutcome, score_assessment
 from app.assessment.service import (
     AssessmentExecution,
     AssessmentInputChangedError,
+    AssessmentInputError,
     AssessmentService,
     _hash_text,
     _schema_hash,
+    build_assessment_input,
 )
 from app.assessment.taxonomy import get_taxonomy
 from app.assessments import (
@@ -118,6 +120,32 @@ def build_service(
         profile_path,
     )
     return service, fake, profile_path, artefacts
+
+
+def test_assessment_input_uses_bounded_canonical_provider_serialization() -> (
+    None
+):
+    assessment_input = build_assessment_input(
+        "# Example Person\n\nPython engineer.",
+        "# Role\n\nBuild reliable software.",
+    )
+
+    assert assessment_input.profile_blocks[0].block_id == "profile-0001"
+    assert assessment_input.jd_blocks[0].block_id == "jd-0001"
+    assert '"schema_version":"v1"' in assessment_input.input_text
+
+
+def test_assessment_input_rejects_oversized_serialized_payload() -> None:
+    with pytest.raises(AssessmentInputError, match="too large"):
+        build_assessment_input("# Profile\n\nPython", "x" * 500_000)
+
+
+def test_assessment_input_accepts_a_large_payload_under_the_contract() -> None:
+    assessment_input = build_assessment_input(
+        "# Profile\n\nPython", "x" * 480_000
+    )
+
+    assert len(assessment_input.input_text) <= 500_000
 
 
 def assessment_count(database_path: str) -> int:

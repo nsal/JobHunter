@@ -22,6 +22,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.assessment.taxonomy import get_taxonomy
 from app.template_validation import (
     TemplateStyleError,
     validate_template_styles,
@@ -77,7 +78,7 @@ class QueueSettings(StrictModel):
     work_lease_seconds: float = Field(ge=5, le=900)
     resource_lease_seconds: float = Field(ge=5, le=900)
     concurrency: int = Field(ge=1, le=3)
-    max_attempts: int = Field(default=2, ge=1, le=2)
+    max_attempts: Literal[2] = 2
 
     @model_validator(mode="after")
     def timings_allow_heartbeats(self) -> QueueSettings:
@@ -313,9 +314,16 @@ def load_ai_settings(
         _reject_secret_keys(overrides, "overrides")
         values = _merge_settings(values, overrides)
     try:
-        return AiSettings.model_validate(values)
+        settings = AiSettings.model_validate(values)
     except ValidationError as error:
         raise SettingsError(f"AI settings are invalid: {error}") from error
+    try:
+        get_taxonomy(settings.scoring.taxonomy_version)
+    except ValueError as error:
+        raise SettingsError(
+            "AI settings use an unsupported assessment taxonomy."
+        ) from error
+    return settings
 
 
 def _reject_symlinks(path: Path, boundary: Path) -> None:

@@ -88,7 +88,11 @@ Create an application with a role, company, and complete job description.
 Setup readiness and consent are checked again at submission. The full job
 description is immutable after creation; ordinary metadata and notes remain
 editable. New applications begin in `Assessing`, and the create request
-redirects immediately while background work runs.
+redirects immediately while background work runs. v1 accepts only taxonomy
+`v1` and exactly two total claims (the initial attempt plus one transient
+retry). The serialized profile and job-description request must fit the
+500,000-character provider limit; invalid or oversized input is rejected
+before application and work records are created.
 
 The assessment worker sends bounded numbered profile and job-description
 blocks to the configured OpenAI model. The application validates citations and

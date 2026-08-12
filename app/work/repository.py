@@ -225,7 +225,7 @@ class WorkRepository:
             rows = connection.execute(
                 """SELECT * FROM work_items
                 WHERE application_id = ?
-                ORDER BY queued_at DESC, id DESC""",
+                ORDER BY queued_at DESC, sequence DESC""",
                 (application_id,),
             ).fetchall()
         return [_row_to_item(row) for row in rows]
@@ -244,7 +244,7 @@ class WorkRepository:
             rows = connection.execute(
                 """SELECT * FROM work_items
                 WHERE state = 'queued' AND available_at <= ?
-                ORDER BY available_at, queued_at, id
+                ORDER BY available_at, queued_at, sequence
                 LIMIT ?""",
                 (now, limit),
             ).fetchall()

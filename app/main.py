@@ -19,6 +19,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.types import Scope
 
+from app.assessment.service import (
+    AssessmentInputError,
+    build_assessment_input,
+)
 from app.consent import ConsentRequiredError
 from app.database import STAGES, initialize_database
 from app.repository import ApplicationNotFoundError, Repository
@@ -35,6 +39,7 @@ from app.routes.setup import (
     require_setup_ready,
     router,
 )
+from app.settings import SettingsError, validate_profile_input
 
 ROOT = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(ROOT / "app" / "templates"))
@@ -222,6 +227,21 @@ def create_app(
         try:
             _require_same_origin(request)
             require_setup_ready(request)
+            if not (values["full_jd"] or "").strip():
+                raise ValueError("Full job description is required.")
+            try:
+                profile_path = validate_profile_input(
+                    request.app.state.project_root
+                )
+                build_assessment_input(
+                    profile_path.read_bytes(), values["full_jd"] or ""
+                )
+            except AssessmentInputError:
+                raise
+            except (OSError, SettingsError) as error:
+                raise AssessmentInputError(
+                    "Assessment input is invalid."
+                ) from error
             application_id = request.app.state.repository.create_application(
                 values,
                 now_value(),
