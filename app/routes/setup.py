@@ -186,6 +186,8 @@ def normalize_http_origin(host: str, port: int) -> str:
         raise ValueError("HTTP host must be a concrete address or hostname.")
     if address is not None:
         normalized_host = str(address)
+    else:
+        normalized_host = normalized_host.lower()
     display_host = (
         f"[{normalized_host}]" if ":" in normalized_host else normalized_host
     )

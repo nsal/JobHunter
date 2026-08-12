@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 from app.artefacts import allocate_application_directory
+from app.consent import ConsentRequiredError, has_openai_profile_sharing_consent
 from app.database import STAGES, connect
 from app.work.models import canonical_timestamp
 
@@ -67,7 +68,11 @@ class Repository:
         self.database_path = database_path
 
     def create_application(
-        self, values: Mapping[str, Any], effective_from: str
+        self,
+        values: Mapping[str, Any],
+        effective_from: str,
+        *,
+        require_profile_consent: bool = False,
     ) -> int:
         """Create an application and its initial Assessing history.
 
@@ -80,6 +85,12 @@ class Repository:
             raise ValueError("Created date is required.")
         work_timestamp = canonical_timestamp(effective_from, "Created date")
         with connect(self.database_path) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if (
+                require_profile_consent
+                and not has_openai_profile_sharing_consent(connection)
+            ):
+                raise ConsentRequiredError()
             pending_directory = f"pending/{uuid4().hex}"
             cursor = connection.execute(
                 """INSERT INTO applications (

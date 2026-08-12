@@ -68,6 +68,32 @@ def test_plain_jd_bytes_and_markdown_code_are_supported() -> None:
     ]
 
 
+def test_raw_html_only_source_is_preserved() -> None:
+    source = "<div>Python engineer</div>\n<p>Builds APIs.</p>"
+
+    blocks = parse_source_blocks(source, SourceKind.PROFILE)
+
+    assert [block.content for block in blocks] == [source]
+    assert blocks[0].kind is BlockKind.PARAGRAPH
+
+
+def test_raw_html_and_markdown_preserve_source_order() -> None:
+    source = "<div>Before</div>\n\n# Candidate\n\nAfter"
+
+    blocks = parse_source_blocks(source, SourceKind.PROFILE)
+
+    assert [block.content for block in blocks] == [
+        "<div>Before</div>",
+        "# Candidate",
+        "After",
+    ]
+    assert [block.kind for block in blocks] == [
+        BlockKind.PARAGRAPH,
+        BlockKind.HEADING,
+        BlockKind.PARAGRAPH,
+    ]
+
+
 def test_canonical_unicode_and_line_endings_have_stable_content_hashes() -> (
     None
 ):

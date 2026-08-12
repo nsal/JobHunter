@@ -239,7 +239,9 @@ async def test_cv_override_and_alias_reject_unsafe_origins_without_queueing(
 ) -> None:
     await _create_mismatch(client, database_path)
 
-    response = await client.post(path)
+    request = client.build_request("POST", path)
+    del request.headers["Origin"]
+    response = await client.send(request)
 
     assert response.status_code == 403
     assert "Unsafe request origin" in response.text
@@ -296,9 +298,16 @@ async def test_cv_retry_rejects_unsafe_origins_without_queueing(
 ) -> None:
     work_repository = await _create_failed_cv(client, database_path)
 
-    response = await client.post(
-        "/applications/1/cv-generations/retry", headers=headers
-    )
+    if headers:
+        response = await client.post(
+            "/applications/1/cv-generations/retry", headers=headers
+        )
+    else:
+        request = client.build_request(
+            "POST", "/applications/1/cv-generations/retry"
+        )
+        del request.headers["Origin"]
+        response = await client.send(request)
 
     assert response.status_code == 403
     assert "Unsafe request origin" in response.text

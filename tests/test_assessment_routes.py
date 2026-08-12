@@ -107,9 +107,16 @@ async def test_assessment_retry_rejects_unsafe_origins_without_queueing(
             " WHERE application_id = 1"
         )
 
-    response = await client.post(
-        "/applications/1/assessment/retry", headers=headers
-    )
+    if headers:
+        response = await client.post(
+            "/applications/1/assessment/retry", headers=headers
+        )
+    else:
+        request = client.build_request(
+            "POST", "/applications/1/assessment/retry"
+        )
+        del request.headers["Origin"]
+        response = await client.send(request)
 
     assert response.status_code == 403
     assert "Unsafe request origin" in response.text

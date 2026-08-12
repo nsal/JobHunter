@@ -17,7 +17,6 @@ from xml.etree import ElementTree
 from docx import Document
 from docx.document import Document as DocumentObject
 from docx.enum.section import WD_ORIENT
-from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -27,8 +26,11 @@ from docx.text.paragraph import Paragraph
 from app.ai.schema_models import CvContent, CvSectionKind
 from app.artefacts import MAX_SEGMENT_LENGTH, ArtefactStore
 from app.settings import CvLayoutSettings
+from app.template_validation import (
+    TemplateStyleError,
+    validate_template_styles,
+)
 
-REQUIRED_PARAGRAPH_STYLES = ("Normal", "Title", "Heading 1", "List Bullet")
 WINDOWS_RESERVED_NAMES = {
     "aux",
     "clock$",
@@ -222,17 +224,10 @@ def _set_style_font(style: Any, name: str, size: float) -> None:
 
 
 def _validate_styles(document: DocumentObject) -> None:
-    for style_name in REQUIRED_PARAGRAPH_STYLES:
-        try:
-            style = document.styles[style_name]
-        except KeyError as error:
-            raise WordWriterError(
-                f"CV template is missing required style: {style_name}."
-            ) from error
-        if style.type is not WD_STYLE_TYPE.PARAGRAPH:
-            raise WordWriterError(
-                f"CV template style must be a paragraph style: {style_name}."
-            )
+    try:
+        validate_template_styles(document)
+    except TemplateStyleError as error:
+        raise WordWriterError(str(error)) from error
 
 
 def _clear_story(story: Any) -> None:

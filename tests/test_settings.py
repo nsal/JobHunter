@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 import yaml
 from docx import Document
+from docx.oxml.ns import qn
 
 from app.settings import (
     MAX_PROFILE_BYTES,
@@ -209,6 +210,38 @@ def test_private_input_validators_compose_without_changing_hashes(
     assert aggregate.profile_sha256
     assert aggregate.template_sha256
     assert aggregate.layout_sha256
+
+
+@pytest.mark.parametrize(
+    "style_name", ["Normal", "Title", "Heading 1", "List Bullet"]
+)
+def test_template_input_rejects_missing_required_styles(
+    tmp_path: Path, style_name: str
+) -> None:
+    profile_root = write_private_inputs(tmp_path)
+    template_path = profile_root / "cv-template.docx"
+    document = Document(str(template_path))
+    style = document.styles[style_name]
+    style.element.getparent().remove(style.element)
+    document.save(str(template_path))
+
+    with pytest.raises(
+        SettingsError, match=f"missing required style: {style_name}"
+    ):
+        validate_template_input(tmp_path)
+
+
+def test_template_input_rejects_required_non_paragraph_style(
+    tmp_path: Path,
+) -> None:
+    profile_root = write_private_inputs(tmp_path)
+    template_path = profile_root / "cv-template.docx"
+    document = Document(str(template_path))
+    document.styles["Title"].element.set(qn("w:type"), "character")
+    document.save(str(template_path))
+
+    with pytest.raises(SettingsError, match="must be a paragraph style: Title"):
+        validate_template_input(tmp_path)
 
 
 def test_private_inputs_reject_missing_corrupt_and_oversized_files(

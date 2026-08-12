@@ -83,7 +83,9 @@ async def test_consent_actions_reject_forged_or_missing_origin(
     client: httpx2.AsyncClient, path: str
 ) -> None:
     forged = await client.post(path, headers={"Origin": "https://evil.test"})
-    missing = await client.post(path)
+    missing_request = client.build_request("POST", path)
+    del missing_request.headers["Origin"]
+    missing = await client.send(missing_request)
 
     assert forged.status_code == 403
     assert missing.status_code == 403
@@ -113,6 +115,11 @@ async def test_consent_actions_reject_origins_not_in_configured_state(
 
 def test_http_origin_normalization_handles_default_ports_and_ipv6() -> None:
     assert normalize_http_origin("example.test", 80) == "http://example.test"
+    assert normalize_http_origin("LOCALHOST", 8000) == "http://localhost:8000"
+    assert (
+        normalize_configured_origin("http://LOCALHOST:8000")
+        == "http://localhost:8000"
+    )
     assert normalize_http_origin("::1", 8123) == "http://[::1]:8123"
     assert normalize_http_origin("0:0:0:0:0:0:0:1", 8123) == "http://[::1]:8123"
     assert normalize_configured_origin("http://[::1]:80") == "http://[::1]"
@@ -149,6 +156,7 @@ async def test_incomplete_setup_is_safe_and_blocks_new_application(
         httpx2.AsyncClient(
             transport=httpx2.ASGITransport(app=app),
             base_url="http://testserver",
+            headers={"Origin": "http://testserver"},
         ) as test_client,
     ):
         setup = await test_client.get("/setup")
@@ -182,6 +190,7 @@ async def test_private_input_corruption_is_redacted(
         httpx2.AsyncClient(
             transport=httpx2.ASGITransport(app=app),
             base_url="http://testserver",
+            headers={"Origin": "http://testserver"},
         ) as test_client,
     ):
         response = await test_client.get("/setup/status")

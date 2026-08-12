@@ -52,6 +52,35 @@ async def test_create_starts_assessing_with_nullable_submission(
     assert 'class="date-cell" data-label="Submitted"' in dashboard.text
 
 
+async def test_create_rejects_forged_origin(
+    client: httpx2.AsyncClient,
+) -> None:
+    response = await client.post(
+        "/applications",
+        data=APPLICATION_DATA,
+        headers={"Origin": "https://evil.test"},
+    )
+
+    assert response.status_code == 403
+    assert "Unsafe request origin" in response.text
+    assert "No applications yet" in (await client.get("/")).text
+
+
+async def test_create_rejects_missing_origin(
+    client: httpx2.AsyncClient,
+) -> None:
+    request = client.build_request(
+        "POST", "/applications", data=APPLICATION_DATA
+    )
+    del request.headers["Origin"]
+
+    response = await client.send(request)
+
+    assert response.status_code == 403
+    assert "Unsafe request origin" in response.text
+    assert "No applications yet" in (await client.get("/")).text
+
+
 @pytest.mark.parametrize(
     ("data", "message"),
     [

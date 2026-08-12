@@ -1043,6 +1043,26 @@ python scripts/generate_ai_schemas.py --check`, `uv lock --check`, and `git
 diff --check` also passed. No production, test, configuration, or `AGENTS.md`
 changes were required.
 
+### Task 12 Fix 2: Harden queueing and input validation
+
+- [x] Require a trusted same-origin request before creating an application and
+  queuing its initial profile-bearing assessment work.
+- [x] Recheck profile-sharing consent under the same SQLite immediate
+  transaction that inserts the application, stage history, and work item.
+- [x] Canonicalize DNS hostnames in trusted origins and preserve raw HTML block
+  content when building deterministic source blocks.
+- [x] Validate the writer's required DOCX paragraph styles during setup using a
+  shared contract, including missing and wrong-type style failures.
+
+Task 12 Fix 2 verification for [issue #52](https://github.com/nsal/JobHunter/issues/52):
+the focused route/setup, repository, source-block, and settings/writer suites
+passed (59, 78, 26, and 57 tests respectively). The complete suite passed 489
+tests. `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy app
+tests scripts`, `uv run python scripts/generate_ai_schemas.py --check`,
+`uv lock --check`, and `git diff --check` also passed. No README or `AGENTS.md`
+changes were needed; the fixes are covered by the application and regression
+tests.
+
 ## Post-Completion
 
 *These items require private inputs, credentials, or external repository

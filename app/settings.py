@@ -22,6 +22,11 @@ from pydantic import (
     model_validator,
 )
 
+from app.template_validation import (
+    TemplateStyleError,
+    validate_template_styles,
+)
+
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_AI_CONFIG = ROOT / "config" / "ai.yaml"
 MAX_CONFIG_BYTES = 64 * 1024
@@ -409,9 +414,13 @@ def validate_template_input(
     if not zipfile.is_zipfile(template):
         raise SettingsError(f"CV template is not a valid DOCX file: {template}")
     try:
-        Document(str(template))
+        document = Document(str(template))
     except Exception as error:
         raise SettingsError(f"CV template is corrupt: {template}") from error
+    try:
+        validate_template_styles(document)
+    except TemplateStyleError as error:
+        raise SettingsError(f"{error} Path: {template}") from error
     return template
 
 

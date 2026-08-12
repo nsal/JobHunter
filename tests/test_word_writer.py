@@ -1944,6 +1944,17 @@ def test_writer_rejects_missing_styles_fonts_and_unsafe_output(
         )
 
     template(template_path)
+    document = Document(str(template_path))
+    document.styles["Title"].element.set(qn("w:type"), "character")
+    document.save(str(template_path))
+    with pytest.raises(
+        WordWriterError, match="must be a paragraph style: Title"
+    ):
+        WordWriter(store).write(
+            content(), "Engineer", "safe", template_path, layout()
+        )
+
+    template(template_path)
     with pytest.raises(WordWriterError, match="fonts are unavailable"):
         WordWriter(store, available_fonts={"Aptos"}).write(
             content(), "Engineer", "safe", template_path, layout()

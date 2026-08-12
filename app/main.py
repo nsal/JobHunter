@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.types import Scope
 
+from app.consent import ConsentRequiredError
 from app.database import STAGES, initialize_database
 from app.repository import ApplicationNotFoundError, Repository
 from app.routes import add_workflow_to_applications, application_workflow
@@ -27,6 +28,7 @@ from app.routes.assessments import router as assessments_router
 from app.routes.cv_generations import router as cv_generations_router
 from app.routes.setup import (
     SetupIncompleteError,
+    _require_same_origin,
     inspect_setup,
     normalize_configured_origin,
     normalize_http_origin,
@@ -218,11 +220,18 @@ def create_app(
             full_jd,
         )
         try:
+            _require_same_origin(request)
             require_setup_ready(request)
             application_id = request.app.state.repository.create_application(
-                values, now_value()
+                values,
+                now_value(),
+                require_profile_consent=True,
             )
-        except (SetupIncompleteError, ValueError) as error:
+        except (
+            ConsentRequiredError,
+            SetupIncompleteError,
+            ValueError,
+        ) as error:
             context = {
                 "application": values,
                 "action": "/applications",
@@ -232,7 +241,9 @@ def create_app(
                 else str(error),
                 "setup_error": (
                     str(error)
-                    if isinstance(error, SetupIncompleteError)
+                    if isinstance(
+                        error, (ConsentRequiredError, SetupIncompleteError)
+                    )
                     else ""
                 ),
                 "is_dialog": bool(request.headers.get("HX-Request")),

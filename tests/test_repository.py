@@ -2,6 +2,7 @@ from typing import Any
 
 import pytest
 
+from app.consent import ConsentRepository, ConsentRequiredError
 from app.database import connect, initialize_database
 from app.repository import ApplicationNotFoundError, Repository
 
@@ -96,6 +97,82 @@ def test_create_starts_assessing_without_a_submission_date(
     assert application["full_jd"] == "Build and maintain software."
     assert application["is_fully_remote"] == 1
     assert application["history"][0]["stage_sequence"] == 1
+
+
+@pytest.mark.parametrize("state", ["absent", "revoked"])
+def test_create_requiring_consent_rolls_back_without_active_consent(
+    database_path: str, state: str
+) -> None:
+    initialize_database(database_path)
+    if state == "revoked":
+        consent = ConsentRepository(database_path)
+        consent.acknowledge_openai_profile_sharing("2026-01-01T00:00:00Z")
+        consent.revoke_openai_profile_sharing("2026-01-01T01:00:00Z")
+
+    repository = Repository(database_path)
+
+    with pytest.raises(ConsentRequiredError):
+        repository.create_application(
+            application_values(),
+            "2026-01-01T09:00:00",
+            require_profile_consent=True,
+        )
+
+    with connect(database_path) as connection:
+        assert (
+            connection.execute("SELECT COUNT(*) FROM applications").fetchone()[
+                0
+            ]
+            == 0
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM application_stage_history"
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            connection.execute("SELECT COUNT(*) FROM work_items").fetchone()[0]
+            == 0
+        )
+
+
+def test_create_requiring_consent_commits_application_and_work(
+    database_path: str,
+) -> None:
+    initialize_database(database_path)
+    ConsentRepository(database_path).acknowledge_openai_profile_sharing(
+        "2026-01-01T00:00:00Z"
+    )
+
+    application_id = Repository(database_path).create_application(
+        application_values(),
+        "2026-01-01T09:00:00",
+        require_profile_consent=True,
+    )
+
+    with connect(database_path) as connection:
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM applications WHERE id = ?",
+                (application_id,),
+            ).fetchone()[0]
+            == 1
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM application_stage_history WHERE application_id = ?",
+                (application_id,),
+            ).fetchone()[0]
+            == 1
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM work_items WHERE application_id = ?",
+                (application_id,),
+            ).fetchone()[0]
+            == 1
+        )
 
 
 @pytest.mark.parametrize(

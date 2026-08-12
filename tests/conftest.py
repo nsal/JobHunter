@@ -49,6 +49,7 @@ async def client(
         httpx2.AsyncClient(
             transport=transport,
             base_url="http://testserver",
+            headers={"Origin": "http://testserver"},
         ) as test_client,
     ):
         ConsentRepository(database_path).acknowledge_openai_profile_sharing(

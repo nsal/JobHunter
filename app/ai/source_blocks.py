@@ -146,6 +146,7 @@ def _structural_fragments(
         "table_open": BlockKind.TABLE,
         "fence": BlockKind.CODE,
         "code_block": BlockKind.CODE,
+        "html_block": BlockKind.PARAGRAPH,
     }
     fragments: list[tuple[BlockKind, str]] = []
     covered_until = 0
